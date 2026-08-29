@@ -99,127 +99,182 @@ def refresh_jwt_token(st):
         sys.stderr.write(f"[Bilas MCP] Token refresh failed: {e}\n")
     return False
 
-def launch_browser_session(direct_google=False):
-    """Launches the user's actual installed browser (Chrome/Edge/Default) to let them log in.
-    Captures session token from network response automatically.
+def login_via_system_default_browser(port=8765):
+    """Launches the user's actual OS default browser (Chrome/Edge/Firefox/Safari)
+    using Python's native webbrowser module — completely bypasses Google's 'browser not secure' bot flag!
     """
-    captured_state = {"jwt": "", "outlet_id": "", "user_id": ""}
+    captured_data = {"jwt": "", "outlet_id": ""}
+
+    class SystemBrowserHandler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass
+
+        def do_OPTIONS(self):
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.end_headers()
+
+        def do_POST(self):
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/token":
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length).decode("utf-8")
+                try:
+                    payload_json = json.loads(body)
+                    jwt = payload_json.get("jwt", "")
+                    outlet = payload_json.get("outlet_id", "")
+                    if jwt:
+                        captured_data["jwt"] = jwt
+                        captured_data["outlet_id"] = outlet
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Access-Control-Allow-Origin", "*")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
+                        return
+                except Exception:
+                    pass
+
+            self.send_response(400)
+            self.end_headers()
+
+        def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/status":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"authorized": bool(captured_data.get("jwt"))}).encode("utf-8"))
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+
+            html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Bilas.id Default Browser Authentication</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }}
+        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 520px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
+        h2 {{ margin-top: 0; color: #38bdf8; font-size: 22px; }}
+        p {{ color: #94a3b8; line-height: 1.5; font-size: 14px; margin-bottom: 24px; }}
+        .btn {{ display: block; width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; text-align: center; }}
+        .btn:hover {{ background: #0369a1; transform: translateY(-1px); }}
+        .bm-btn {{ display: block; background: #16a34a; color: white; padding: 14px; border-radius: 10px; text-decoration: none; font-size: 15px; font-weight: 600; text-align: center; margin-top: 12px; transition: all 0.2s; }}
+        .bm-btn:hover {{ background: #15803d; }}
+        .step-box {{ background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 18px; margin-top: 16px; text-align: left; }}
+        .step-title {{ font-size: 13px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-bottom: 6px; }}
+        .step-desc {{ font-size: 13px; color: #94a3b8; margin: 0 0 12px 0; }}
+        .status {{ margin-top: 20px; font-size: 14px; font-weight: 500; padding: 12px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; display: none; }}
+        .success {{ color: #4ade80; border-color: #166534; display: block; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🔒 Bilas.id System Browser Authentication</h2>
+        <p>Connect your AI Agent using your regular system browser with 100% Google security compliance.</p>
+
+        <div class="step-box">
+            <div class="step-title">Step 1: Log in on Bilas.id</div>
+            <p class="step-desc">Open Bilas.id in a new tab and log in using Google SSO, OTP, or Password.</p>
+            <a href="https://web.bilas.id/masuk" target="_blank" class="btn">1. Open Bilas.id Web Login</a>
+        </div>
+
+        <div class="step-box">
+            <div class="step-title">Step 2: Transfer Session Token</div>
+            <p class="step-desc">Once logged in, drag the green button to your bookmarks bar, switch to your Bilas tab, and click it once!</p>
+            <a class="bm-btn" href="javascript:(function(){{var a=JSON.parse(localStorage.getItem('authData')||'{{}}');var t=a.extendedToken||a.token||localStorage.getItem('extendedToken')||localStorage.getItem('token')||sessionStorage.getItem('extendedToken')||sessionStorage.getItem('token');var o=localStorage.getItem('activeOutlet')||localStorage.getItem('outlet_id')||'';if(!t){{alert('⚠️ Please log in to web.bilas.id in this tab first!');return;}}fetch('http://127.0.0.1:{port}/token',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{jwt:t,outlet_id:o}})}}).then(r=>r.json()).then(d=>alert('✅ Bilas.id Agent Authorized Successfully!')).catch(e=>alert('Error transferring token: '+e));}})();">
+                📌 Drag to Bookmarks: Authorize Bilas Agent
+            </a>
+        </div>
+
+        <div id="statusBox" class="status"></div>
+    </div>
+
+    <script>
+        function checkStatus() {{
+            fetch('/status')
+                .then(r => r.json())
+                .then(d => {{
+                    if (d.authorized) {{
+                        document.getElementById('statusBox').className = 'status success';
+                        document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized Successfully!</strong> Session state saved. You may close this tab.';
+                    }}
+                }}).catch(() => {{}});
+        }}
+        setInterval(checkStatus, 1500);
+    </script>
+</body>
+</html>"""
+            self.wfile.write(html_content.encode("utf-8"))
 
     try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            browser = None
-            # Attempt launching user's actual installed browsers first
-            for channel in ["chrome", "msedge", None]:
-                try:
-                    if channel:
-                        browser = p.chromium.launch(channel=channel, headless=False)
-                        print(f"   [Browser] Opened system-installed {channel.upper()} browser.")
-                    else:
-                        browser = p.chromium.launch(headless=False)
-                        print("   [Browser] Opened Chromium browser.")
-                    break
-                except Exception:
-                    continue
-
-            if browser:
-                context = browser.new_context()
-                page = context.new_page()
-
-                def handle_response(response):
-                    try:
-                        url = response.url
-                        if "google-login" in url or "google-register" in url or "/refresh-token" in url or "/login/" in url:
-                            data = response.json()
-                            res = data.get("result", {})
-                            token = res.get("extendedToken") or res.get("token")
-                            if token and not captured_state.get("jwt"):
-                                captured_state["jwt"] = token
-                                payload = jwt_decode_payload(token)
-                                captured_state["user_id"] = payload.get("id")
-                                outlets = res.get("outletlist") or res.get("outletList") or []
-                                if outlets:
-                                    captured_state["outlet_id"] = outlets[0].get("id", "")
-                    except Exception:
-                        pass
-
-                page.on("response", handle_response)
-                page.goto("https://web.bilas.id/masuk")
-
-                if direct_google:
-                    try:
-                        page.wait_for_timeout(2000)
-                        google_btn = page.get_by_role("button", name="Masuk dengan Google")
-                        if google_btn.is_visible():
-                            google_btn.click()
-                            print("   → Clicked 'Masuk dengan Google' — waiting for Google Sign-In...")
-                    except Exception:
-                        print("   → Please click 'Masuk dengan Google' in your browser.")
-
-                start_time = time.time()
-                while time.time() - start_time < 180:
-                    if captured_state.get("jwt"):
-                        page.wait_for_timeout(2000)
-                        break
-                    page.wait_for_timeout(500)
-
-                browser.close()
+        httpd = socketserver.TCPServer(("127.0.0.1", port), SystemBrowserHandler)
     except Exception as e:
-        import webbrowser
-        print(f"   [Default Browser] Opening web.bilas.id in system default browser...")
-        webbrowser.open("https://web.bilas.id/masuk")
+        return json.dumps({"status": "error", "message": f"Could not bind Auth Bridge server to port {port}: {e}"})
 
-    if captured_state.get("jwt"):
-        if not captured_state.get("outlet_id"):
-            h = dict(APP_TOKENS)
-            h["Authorization"] = "Bearer " + captured_state["jwt"]
-            try:
-                req = urllib.request.Request("https://apiweb.bilas.id/web/outlet/profil", headers=h, method="GET")
-                resp = urllib.request.urlopen(req, timeout=10)
-                res = json.loads(resp.read().decode("utf-8"))
-                if res.get("result", {}).get("id"):
-                    captured_state["outlet_id"] = res["result"]["id"]
-            except Exception:
-                pass
+    server_thread = threading.Thread(target=httpd.serve_forever)
+    server_thread.daemon = True
+    server_thread.start()
 
-        payload = jwt_decode_payload(captured_state["jwt"])
+    bridge_url = f"http://127.0.0.1:{port}"
+    print("\n=======================================================")
+    print("   [System Default Browser Authentication]             ")
+    print("=======================================================")
+    print(f"🔒 Server running at: {bridge_url}")
+    print("👉 Opening your default browser automatically...")
+    print("-------------------------------------------------------\n")
+
+    # Launch default browser using native Python module
+    import webbrowser
+    webbrowser.open(bridge_url)
+
+    start_time = time.time()
+    while time.time() - start_time < 300:
+        if captured_data.get("jwt"):
+            if not captured_data.get("outlet_id"):
+                payload = jwt_decode_payload(captured_data["jwt"])
+                h = dict(APP_TOKENS)
+                h["Authorization"] = "Bearer " + captured_data["jwt"]
+                try:
+                    req = urllib.request.Request("https://apiweb.bilas.id/web/outlet/profil", headers=h, method="GET")
+                    resp = urllib.request.urlopen(req, timeout=5)
+                    res = json.loads(resp.read().decode("utf-8"))
+                    if res.get("result", {}).get("id"):
+                        captured_data["outlet_id"] = res["result"]["id"]
+                except Exception:
+                    pass
+            break
+        time.sleep(1)
+
+    httpd.shutdown()
+
+    if captured_data.get("jwt"):
+        payload = jwt_decode_payload(captured_data["jwt"])
         st = {
-            "jwt": captured_state["jwt"],
-            "user_id": captured_state.get("user_id") or payload.get("id"),
-            "outlet_id": captured_state.get("outlet_id", ""),
+            "jwt": captured_data["jwt"],
+            "user_id": payload.get("id"),
+            "outlet_id": captured_data.get("outlet_id", ""),
             "exp": payload.get("exp"),
             "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%S")
         }
         save_state(st)
         return json.dumps({
             "status": "success",
-            "message": "✅ Authentication successful! Session token saved to ~/.bilas_id/",
-            "outlet_id": st["outlet_id"],
-            "expires_at": st["exp"]
+            "message": "✅ Default browser authentication successful! Session state saved to ~/.bilas_id/",
+            "outlet_id": st["outlet_id"]
         }, indent=2)
     else:
         return json.dumps({
             "status": "error",
-            "message": "❌ Login timed out or token was not captured. Please complete login in your browser."
+            "message": "❌ Default browser authentication timed out."
         }, indent=2)
-
-def login_via_playwright_gui():
-    print("\n=======================================================")
-    print("   [Method 1: System Browser GUI Authentication]      ")
-    print("=======================================================")
-    print("1. Opening Bilas.id login page in your installed browser...")
-    print("2. Log in using Google, OTP, or Password.")
-    print("-------------------------------------------------------\n")
-    return launch_browser_session(direct_google=False)
-
-def login_via_google_sso_popup():
-    print("\n=======================================================")
-    print("   [Method 2: Direct Google SSO Login]                 ")
-    print("=======================================================")
-    print("1. Opening Google Sign-In in your installed browser...")
-    print("2. Pick your Google account or enter credentials.")
-    print("-------------------------------------------------------\n")
-    return launch_browser_session(direct_google=True)
 def save_manual_credentials(jwt_token: str, outlet_id: str):
     payload = jwt_decode_payload(jwt_token)
     st = {
