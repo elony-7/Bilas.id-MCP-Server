@@ -1,4 +1,4 @@
-# Bilas.id MCP Server (v1.2.0)
+# Bilas.id MCP Server (v1.2.1)
 
 Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 
@@ -16,9 +16,9 @@ Users and Agents have 4 distinct onboarding options:
 - **Best for:** Local desktop AI agents (Claude Code CLI, Claude Desktop).
 
 ### 2. 🌐 Remote Auth Bridge (`--remote-bridge`)
-- Launches a lightweight local HTTP Auth Bridge server (`http://localhost:8765`).
-- Displays a clean web link. The user opens the URL on their laptop/phone, logs in, and authorizes the cloud server.
-- **Best for:** Headless cloud servers, VPS instances, remote Docker containers without display output (X11/GUI).
+- Launches a lightweight local HTTP Auth Bridge server bound strictly to `127.0.0.1:8765` for privacy.
+- **Local / SSH Access:** Open `http://localhost:8765` on your machine.
+- **Optional Internet Exposure:** If you run an agent on a headless VPS without SSH forwarding, you can optionally expose the local port to the internet via Cloudflare Tunnel (`cloudflared tunnel --url http://localhost:8765`).
 
 ### 3. 🔑 Interactive Onboarding Menu (`--onboard`)
 - Interactive CLI prompt presenting all authentication options upon running `bilas-mcp --onboard`.
@@ -32,7 +32,7 @@ Users and Agents have 4 distinct onboarding options:
 
 ### 1. 🔐 Auth & Onboarding Tools
 - `bilas_launch_browser_login`: Opens interactive GUI browser window to log in.
-- `bilas_start_remote_auth_bridge`: Starts temporary Remote Auth Bridge HTTP server for cloud servers.
+- `bilas_start_remote_auth_bridge`: Starts temporary local Auth Bridge HTTP server on `127.0.0.1:8765`.
 - `bilas_set_manual_credentials`: Manually saves JWT token and Outlet ID into local configuration.
 
 ### 2. 📊 Financials & Cashbox Accounting

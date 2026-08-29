@@ -233,8 +233,9 @@ def start_remote_auth_bridge(port=8765):
 </html>'''
             self.wfile.write(html_content.encode("utf-8"))
 
+    # Bind strictly to 127.0.0.1 for local privacy by default
     try:
-        httpd = socketserver.TCPServer(("0.0.0.0", port), AuthBridgeHandler)
+        httpd = socketserver.TCPServer(("127.0.0.1", port), AuthBridgeHandler)
     except Exception as e:
         return json.dumps({"status": "error", "message": f"Could not bind Remote Auth Bridge server to port {port}: {e}"})
 
@@ -247,8 +248,10 @@ def start_remote_auth_bridge(port=8765):
 =======================================================")
     print("   [Method 2: Remote Auth Bridge Server Started]       ")
     print("=======================================================")
-    print(f"👉 Please open this URL in your browser/phone:")
-    print(f"   {bridge_url}")
+    print(f"🔒 Server bound locally to: {bridge_url}")
+    print("👉 If accessing from local machine/SSH tunnel, open the link above.")
+    print("👉 OPTIONAL: If using Cloudflare Tunnel to expose remotely, run:")
+    print(f"   cloudflared tunnel --url {bridge_url}")
     print("-------------------------------------------------------
 ")
 
@@ -306,7 +309,7 @@ def interactive_onboarding_menu():
     print("Select how you would like to connect your Bilas.id account:
 ")
     print("1. 🖥️ Interactive GUI Browser (Local Machine with Playwright)")
-    print("2. 🌐 Remote Auth Bridge (Cloud / Headless Server via Web Link)")
+    print("2. 🌐 Remote Auth Bridge (Cloud / Headless Server via Local Web Link)")
     print("3. 🔑 Manual Token & Outlet ID Entry")
     print("4. ❌ Cancel
 ")
@@ -387,8 +390,8 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.2.0",
-    description="Comprehensive Bilas.id Agent Integration Suite with Multi-Modal Onboarding (GUI Browser, Remote Auth Bridge, Env Vars)"
+    version="1.2.1",
+    description="Comprehensive Bilas.id Agent Integration Suite with Multi-Modal Onboarding (GUI Browser, Local Auth Bridge, Env Vars)"
 )
 
 # ---------------------------------------------------------------------------
@@ -402,7 +405,7 @@ def bilas_launch_browser_login() -> str:
 
 @mcp.tool()
 def bilas_start_remote_auth_bridge() -> str:
-    """Start a temporary Remote Auth Bridge HTTP server for Cloud/Headless environments. Returns a web URL to authorize login on any device."""
+    """Start a temporary Auth Bridge HTTP server bound strictly to localhost (127.0.0.1:8765). Can optionally be exposed via Cloudflare Tunnel."""
     return start_remote_auth_bridge()
 
 @mcp.tool()
