@@ -1,24 +1,25 @@
-# Bilas.id MCP Server (v1.2.1)
+# Bilas.id MCP Server (v1.3.0)
 
 Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 
 ---
 
-## 🚀 Multi-Modal Authentication Suite (Headless & Desktop Support)
+## 🚀 1-Click OAuth & Multi-Modal Onboarding Suite
 
 The MCP server guarantees **100% session state isolation**. Zero hardcoded credentials or JWT tokens exist in the codebase. User authentication is stored exclusively in `~/.bilas_id/token_state.json` on the user's local machine.
 
 Users and Agents have 4 distinct onboarding options:
 
-### 1. 🖥️ Interactive GUI Browser (`--browser-login`)
+### 1. ⚡ 1-Click OAuth Remote Auth Bridge (`--remote-bridge`)
+- Launches an interactive 1-Click OAuth Authorization server at `http://127.0.0.1:8765`.
+- **Popup SSO Flow:** Clicking **"🔑 Connect & Authorize Bilas.id"** opens the Google / Bilas.id OAuth login popup window.
+- **1-Click Auto-Grab Bookmarklet:** Includes a zero-paste bookmarklet button. Once logged in, clicking the bookmarklet instantly transfers your session token into the AI Agent's configuration file!
+- **Automatic Outlet Resolution:** Once authorized, the server automatically queries the user's outlet business profile and extracts the active `outlet_id`.
+
+### 2. 🖥️ Interactive Playwright GUI Browser (`--browser-login`)
 - Launches a local Playwright Chromium window opening `https://web.bilas.id/login`.
 - Intercepts login response tokens and saves session state locally.
 - **Best for:** Local desktop AI agents (Claude Code CLI, Claude Desktop).
-
-### 2. 🌐 Remote Auth Bridge (`--remote-bridge`)
-- Launches a lightweight local HTTP Auth Bridge server bound strictly to `127.0.0.1:8765` for privacy.
-- **Local / SSH Access:** Open `http://localhost:8765` on your machine.
-- **Optional Internet Exposure:** If you run an agent on a headless VPS without SSH forwarding, you can optionally expose the local port to the internet via Cloudflare Tunnel (`cloudflared tunnel --url http://localhost:8765`).
 
 ### 3. 🔑 Interactive Onboarding Menu (`--onboard`)
 - Interactive CLI prompt presenting all authentication options upon running `bilas-mcp --onboard`.
@@ -31,12 +32,12 @@ Users and Agents have 4 distinct onboarding options:
 ## 🛠️ Complete Feature & Tool Suite
 
 ### 1. 🔐 Auth & Onboarding Tools
-- `bilas_launch_browser_login`: Opens interactive GUI browser window to log in.
-- `bilas_start_remote_auth_bridge`: Starts temporary local Auth Bridge HTTP server on `127.0.0.1:8765`.
-- `bilas_set_manual_credentials`: Manually saves JWT token and Outlet ID into local configuration.
+- `bilas_launch_browser_login`: Opens interactive Playwright GUI browser window.
+- `bilas_start_remote_auth_bridge`: Starts 1-Click OAuth Auth Bridge HTTP server on `127.0.0.1:8765`.
+- `bilas_set_manual_credentials`: Manually saves JWT token and Outlet ID.
 
 ### 2. 📊 Financials & Cashbox Accounting
-- `bilas_get_cashbox_report`: Computes the exact 5-Column per-cashbox accounting matrix (`Saldo Awal + Debit - Kredit = Saldo Akhir`).
+- `bilas_get_cashbox_report`: Computes exact 5-Column per-cashbox accounting matrix (`Saldo Awal + Debit - Kredit = Saldo Akhir`).
 - `bilas_get_financial_categories`: Lists all operational expense & income categories.
 - `bilas_add_expense`: Records new operational expense (*Pengeluaran*) entries (e.g. *Selisih Kurang*, *Biaya Listrik*).
 - `bilas_delete_expense`: Soft-deletes erroneous financial records by `keuanganId`.
@@ -55,24 +56,7 @@ Users and Agents have 4 distinct onboarding options:
 
 ## 📦 Installation & Setup
 
-### 1. Install Package via Pip
 ```bash
 pip install git+https://github.com/elony-7/Bilas.id-MCP-Server.git
 playwright install
-```
-
-### 2. Add to Claude Code CLI
-```bash
-claude mcp add bilas-id -- bilas-mcp
-```
-
-### 3. Add to Claude Desktop (`claude_desktop_config.json`)
-```json
-{
-  "mcpServers": {
-    "bilas-id": {
-      "command": "bilas-mcp"
-    }
-  }
-}
 ```

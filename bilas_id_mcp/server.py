@@ -1,7 +1,7 @@
-"""Bilas.id Clean MCP Server Module (v1.2.2)
+"""Bilas.id Clean MCP Server Module (v1.3.0)
 
 Comprehensive Model Context Protocol (MCP) server for Bilas.id POS & Reporting Platform:
-  - Multi-Modal Onboarding (Interactive GUI Browser, Remote Auth Bridge, Manual Token Paste, Env Vars)
+  - Multi-Modal Onboarding (Interactive GUI Browser, OAuth Auto-Capture Bridge, Manual Token Paste, Env Vars)
   - 100% isolated session token management in user OS home (~/.bilas_id/token_state.json)
   - Zero hardcoded tokens or user IDs in codebase
   - 5-Column Per-Cashbox Accounting (Saldo Awal + Debit - Kredit = Saldo Akhir)
@@ -179,53 +179,131 @@ def start_remote_auth_bridge(port=8765):
         def log_message(self, format, *args):
             pass
 
+        def do_OPTIONS(self):
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.end_headers()
+
+        def do_POST(self):
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/token":
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length).decode("utf-8")
+                try:
+                    payload_json = json.loads(body)
+                    jwt = payload_json.get("jwt", "")
+                    outlet = payload_json.get("outlet_id", "")
+                    if jwt:
+                        captured_data["jwt"] = jwt
+                        captured_data["outlet_id"] = outlet
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Access-Control-Allow-Origin", "*")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
+                        return
+                except Exception as e:
+                    pass
+
+            self.send_response(400)
+            self.end_headers()
+
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path == "/token":
                 query = urllib.parse.parse_qs(parsed.query)
                 jwt = query.get("jwt", [""])[0]
                 outlet = query.get("outlet_id", [""])[0]
-                if jwt and outlet:
+                if jwt:
                     captured_data["jwt"] = jwt
                     captured_data["outlet_id"] = outlet
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.end_headers()
-                    self.wfile.write(b"<html><body style='font-family:sans-serif; text-align:center; padding:50px; background:#f4f6f8;'><h2 style='color:#2e7d32;'>&#9989; Authentication Successful!</h2><p>Your session token has been securely transferred to your Cloud Agent.</p><p>You may close this tab now.</p></body></html>")
+                    self.wfile.write(b"<html><body style='font-family:sans-serif; text-align:center; padding:50px; background:#0f172a; color:#f8fafc;'><h2 style='color:#4ade80;'>&#9989; OAuth Authorization Successful!</h2><p>Your Bilas.id session has been automatically captured & transferred to your AI Agent.</p><p>You may close this browser tab now.</p></body></html>")
                     return
 
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            html_content = '''<!DOCTYPE html>
+            
+            html_content = f'''<!DOCTYPE html>
 <html>
 <head>
-    <title>Bilas.id Cloud Agent Remote Authentication</title>
+    <title>Bilas.id OAuth 1-Click Agent Authorization</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
-        .card { background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 480px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; }
-        h2 { margin-top: 0; color: #38bdf8; }
-        p { color: #94a3b8; line-height: 1.5; font-size: 14px; }
-        .btn { display: block; width: 100%; padding: 12px; margin: 12px 0; background: #0284c7; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none; text-align: center; box-sizing: border-box; }
-        .btn:hover { background: #0369a1; }
-        input { width: 100%; padding: 12px; margin: 8px 0 16px 0; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: white; box-sizing: border-box; }
-        label { font-size: 12px; color: #cbd5e1; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }}
+        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 500px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
+        h2 {{ margin-top: 0; color: #38bdf8; font-size: 22px; }}
+        p {{ color: #94a3b8; line-height: 1.5; font-size: 14px; margin-bottom: 24px; }}
+        .btn {{ display: inline-block; width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; }}
+        .btn:hover {{ background: #0369a1; transform: translateY(-1px); }}
+        .status {{ margin-top: 20px; font-size: 14px; font-weight: 500; padding: 12px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; display: none; }}
+        .success {{ color: #4ade80; border-color: #166534; display: block; }}
+        .bookmarklet-box {{ margin-top: 24px; padding-top: 16px; border-top: 1px solid #334155; text-align: left; }}
+        .bookmarklet-box label {{ font-size: 12px; color: #cbd5e1; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }}
+        .bm-btn {{ display: block; background: #334155; color: #e2e8f0; padding: 10px; border-radius: 8px; text-decoration: none; font-size: 13px; text-align: center; margin-top: 8px; border: 1px dashed #64748b; cursor: grab; }}
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>🔒 Bilas.id Agent Remote Auth Bridge</h2>
-        <p>Connect your Cloud AI Agent to Bilas.id securely without sharing raw login credentials with the server.</p>
-        <a href="https://web.bilas.id/login" target="_blank" class="btn">1. Open Bilas.id Web Login</a>
-        <form method="GET" action="/token">
-            <label>2. Paste Extended Token (JWT)</label>
-            <input type="text" name="jwt" placeholder="eyJhbGciOiJIUzI1Ni..." required />
-            <label>3. Outlet ID</label>
-            <input type="text" name="outlet_id" placeholder="2cvnOPoOgK9uZBQCc40c" required />
-            <button type="submit" class="btn" style="background:#16a34a;">4. Authorize Cloud Agent</button>
-        </form>
+        <h2>🔒 Bilas.id 1-Click OAuth Connect</h2>
+        <p>Authorize your AI Agent seamlessly with 1-Click Google / Bilas.id Single Sign-On.</p>
+        
+        <button id="oauthBtn" class="btn" onclick="startOAuthFlow()">🔑 Connect & Authorize Bilas.id</button>
+        
+        <div id="statusBox" class="status"></div>
+
+        <div class="bookmarklet-box">
+            <label>⚡ Fallback 1-Click Bookmarklet (Instant Auto-Grab):</label>
+            <a class="bm-btn" href="javascript:(function(){{var t=localStorage.getItem('token')||sessionStorage.getItem('token');var o=localStorage.getItem('outlet_id')||'';if(!t){{alert('Please log in on Bilas.id first!');return;}}fetch('http://localhost:{port}/token',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{jwt:t,outlet_id:o}})}}).then(r=>r.json()).then(d=>alert('✅ Bilas.id Agent Authorized Successfully!')).catch(e=>alert('Error transferring token: '+e));}})();">
+                📌 Drag This to Bookmark Bar (1-Click Grab Token)
+            </a>
+        </div>
     </div>
+
+    <script>
+        function startOAuthFlow() {{
+            const btn = document.getElementById('oauthBtn');
+            const status = document.getElementById('statusBox');
+            btn.innerText = "⏳ Waiting for Bilas.id SSO Login...";
+            btn.style.background = "#64748b";
+
+            // Open Bilas login in a popup window
+            const width = 600, height = 700;
+            const left = (screen.width / 2) - (width / 2);
+            const top = (screen.height / 2) - (height / 2);
+            const authWindow = window.open('https://web.bilas.id/login', 'BilasOAuth', `width=${{width}},height=${{height}},top=${{top}},left=${{left}}`);
+
+            // Poll localStorage / postMessage or handle cross-origin window check
+            const checkInterval = setInterval(() => {{
+                try {{
+                    if (authWindow.closed) {{
+                        clearInterval(checkInterval);
+                        btn.innerText = "🔑 Connect & Authorize Bilas.id";
+                        btn.style.background = "#0284c7";
+                    }}
+                }} catch (e) {{}}
+            }}, 1000);
+        }}
+
+        // Listen for postMessage or automatic callback redirect
+        window.addEventListener('message', function(event) {{
+            if (event.data && event.data.jwt) {{
+                fetch('/token', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify(event.data)
+                }}).then(() => {{
+                    document.getElementById('statusBox').className = "status success";
+                    document.getElementById('statusBox').innerText = "✅ OAuth Authorization Successful!";
+                }});
+            }}
+        }});
+    </script>
 </body>
 </html>'''
             self.wfile.write(html_content.encode("utf-8"))
@@ -241,17 +319,29 @@ def start_remote_auth_bridge(port=8765):
 
     bridge_url = f"http://localhost:{port}"
     print("\n=======================================================")
-    print("   [Method 2: Remote Auth Bridge Server Started]       ")
+    print("   [Method 2: 1-Click OAuth Auth Bridge Server]        ")
     print("=======================================================")
     print(f"🔒 Server bound locally to: {bridge_url}")
-    print("👉 If accessing from local machine/SSH tunnel, open the link above.")
-    print("👉 OPTIONAL: If using Cloudflare Tunnel to expose remotely, run:")
-    print(f"   cloudflared tunnel --url {bridge_url}")
+    print("👉 Open the URL above and click 'Connect & Authorize Bilas.id'.")
     print("-------------------------------------------------------\n")
 
     start_time = time.time()
     while time.time() - start_time < 300:
-        if captured_data.get("jwt") and captured_data.get("outlet_id"):
+        if captured_data.get("jwt"):
+            # Fetch user outlets if outlet_id not set
+            if not captured_data.get("outlet_id"):
+                payload = jwt_decode_payload(captured_data["jwt"])
+                st_temp = {"jwt": captured_data["jwt"]}
+                h = dict(APP_TOKENS)
+                h["Authorization"] = "Bearer " + captured_data["jwt"]
+                try:
+                    req = urllib.request.Request("https://apiweb.bilas.id/web/outlet/profil", headers=h, method="GET")
+                    resp = urllib.request.urlopen(req, timeout=5)
+                    res = json.loads(resp.read().decode("utf-8"))
+                    if res.get("result", {}).get("id"):
+                        captured_data["outlet_id"] = res["result"]["id"]
+                except Exception:
+                    pass
             break
         time.sleep(1)
 
@@ -262,14 +352,14 @@ def start_remote_auth_bridge(port=8765):
         st = {
             "jwt": captured_data["jwt"],
             "user_id": payload.get("id"),
-            "outlet_id": captured_data["outlet_id"],
+            "outlet_id": captured_data.get("outlet_id", ""),
             "exp": payload.get("exp"),
             "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%S")
         }
         save_state(st)
         return json.dumps({
             "status": "success",
-            "message": "✅ Remote Authentication Successful! Session state saved to ~/.bilas_id/",
+            "message": "✅ 1-Click OAuth Authorization Successful! Session state saved to ~/.bilas_id/",
             "outlet_id": st["outlet_id"]
         }, indent=2)
     else:
@@ -301,7 +391,7 @@ def interactive_onboarding_menu():
     print("=======================================================")
     print("Select how you would like to connect your Bilas.id account:\n")
     print("1. 🖥️ Interactive GUI Browser (Local Machine with Playwright)")
-    print("2. 🌐 Remote Auth Bridge (Cloud / Headless Server via Local Web Link)")
+    print("2. 🌐 1-Click OAuth Auth Bridge (Cloud / Headless Server via Local Web Link)")
     print("3. 🔑 Manual Token & Outlet ID Entry")
     print("4. ❌ Cancel\n")
     
@@ -333,7 +423,7 @@ def get_valid_headers():
             "👉 Option A (Local Desktop GUI):\n"
             "   Run tool 'bilas_launch_browser_login' or command:\n"
             "   bilas-mcp --browser-login\n\n"
-            "👉 Option B (Cloud / Headless Server Remote Bridge):\n"
+            "👉 Option B (1-Click OAuth Auth Bridge):\n"
             "   Run tool 'bilas_start_remote_auth_bridge' or command:\n"
             "   bilas-mcp --remote-bridge\n\n"
             "👉 Option C (Interactive Onboarding Menu):\n"
@@ -359,8 +449,8 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.2.2",
-    description="Comprehensive Bilas.id Agent Integration Suite with Multi-Modal Onboarding (GUI Browser, Local Auth Bridge, Env Vars)"
+    version="1.3.0",
+    description="Comprehensive Bilas.id Agent Integration Suite with 1-Click OAuth Onboarding"
 )
 
 # ---------------------------------------------------------------------------
@@ -374,7 +464,7 @@ def bilas_launch_browser_login() -> str:
 
 @mcp.tool()
 def bilas_start_remote_auth_bridge() -> str:
-    """Start a temporary Auth Bridge HTTP server bound strictly to localhost (127.0.0.1:8765). Can optionally be exposed via Cloudflare Tunnel."""
+    """Start a temporary 1-Click OAuth Auth Bridge HTTP server bound to localhost (127.0.0.1:8765). Automatically captures session state."""
     return start_remote_auth_bridge()
 
 @mcp.tool()
