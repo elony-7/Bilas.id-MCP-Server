@@ -172,261 +172,124 @@ def login_via_playwright_gui():
             "message": "❌ Login timed out or token was not captured."
         }, indent=2)
 
-def start_remote_auth_bridge(port=8765):
-    captured_data = {"jwt": "", "outlet_id": ""}
-
-    class AuthBridgeHandler(http.server.BaseHTTPRequestHandler):
-        def log_message(self, format, *args):
-            pass
-
-        def do_OPTIONS(self):
-            self.send_response(200)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.end_headers()
-
-        def do_POST(self):
-            parsed = urllib.parse.urlparse(self.path)
-            if parsed.path == "/token":
-                content_length = int(self.headers.get("Content-Length", 0))
-                body = self.rfile.read(content_length).decode("utf-8")
-                try:
-                    payload_json = json.loads(body)
-                    jwt = payload_json.get("jwt", "")
-                    outlet = payload_json.get("outlet_id", "")
-                    if jwt:
-                        captured_data["jwt"] = jwt
-                        captured_data["outlet_id"] = outlet
-                        self.send_response(200)
-                        self.send_header("Content-Type", "application/json")
-                        self.send_header("Access-Control-Allow-Origin", "*")
-                        self.end_headers()
-                        self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
-                        return
-                except Exception:
-                    pass
-
-            self.send_response(400)
-            self.end_headers()
-
-        def do_GET(self):
-            parsed = urllib.parse.urlparse(self.path)
-            if parsed.path == "/google-oauth":
-                try:
-                    # Fetch NextAuth CSRF token & cookies from web.bilas.id
-                    req_csrf = urllib.request.Request("https://web.bilas.id/api/auth/csrf", headers={"User-Agent": "Mozilla/5.0"})
-                    with urllib.request.urlopen(req_csrf, timeout=10) as resp:
-                        cookies = resp.headers.get_all("Set-Cookie")
-                        csrf_data = json.loads(resp.read().decode("utf-8"))
-                        csrf_token = csrf_data.get("csrfToken")
-
-                    cookie_str = "; ".join([c.split(";")[0] for c in cookies]) if cookies else ""
-                    post_data = urllib.parse.urlencode({
-                        "csrfToken": csrf_token,
-                        "callbackUrl": "https://web.bilas.id/masuk",
-                        "json": "true"
-                    }).encode("utf-8")
-
-                    req_signin = urllib.request.Request(
-                        "https://web.bilas.id/api/auth/signin/google",
-                        data=post_data,
-                        headers={
-                            "Content-Type": "application/x-www-form-urlencoded",
-                            "Cookie": cookie_str,
-                            "User-Agent": "Mozilla/5.0"
-                        },
-                        method="POST"
-                    )
-                    with urllib.request.urlopen(req_signin, timeout=10) as resp_signin:
-                        signin_res = json.loads(resp_signin.read().decode("utf-8"))
-                        google_url = signin_res.get("url")
-                        if google_url:
-                            self.send_response(302)
-                            self.send_header("Location", google_url)
-                            self.end_headers()
-                            return
-                except Exception as e:
-                    sys.stderr.write(f"[Bilas OAuth Bridge] OAuth redirect fetch error: {e}\n")
-
-                self.send_response(302)
-                self.send_header("Location", "https://web.bilas.id/masuk")
-                self.end_headers()
-                return
-
-            if parsed.path == "/status":
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                self.wfile.write(json.dumps({"authorized": bool(captured_data.get("jwt"))}).encode("utf-8"))
-                return
-
-            if parsed.path == "/token":
-                query = urllib.parse.parse_qs(parsed.query)
-                jwt = query.get("jwt", [""])[0]
-                outlet = query.get("outlet_id", [""])[0]
-                if jwt:
-                    captured_data["jwt"] = jwt
-                    captured_data["outlet_id"] = outlet
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(b"<html><body style='font-family:sans-serif; text-align:center; padding:50px; background:#0f172a; color:#f8fafc;'><h2 style='color:#4ade80;'>&#9989; OAuth Authorization Successful!</h2><p>Your Bilas.id session has been automatically captured & transferred to your AI Agent.</p><p>You may close this browser tab now.</p></body></html>")
-                    return
-
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            
-            html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>Bilas.id Direct Google OAuth Bridge</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }}
-        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 520px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
-        h2 {{ margin-top: 0; color: #38bdf8; font-size: 22px; }}
-        p {{ color: #94a3b8; line-height: 1.5; font-size: 14px; margin-bottom: 24px; }}
-        .btn {{ display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 14px; background: #ffffff; color: #1f2937; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; border: 1px solid #e5e7eb; }}
-        .btn:hover {{ background: #f9fafb; transform: translateY(-1px); }}
-        .step-box {{ background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 18px; margin-top: 16px; text-align: left; }}
-        .step-title {{ font-size: 13px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-bottom: 6px; }}
-        .step-desc {{ font-size: 13px; color: #94a3b8; margin: 0 0 14px 0; }}
-        .status {{ margin-top: 20px; font-size: 14px; font-weight: 500; padding: 12px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; display: none; }}
-        .success {{ color: #4ade80; border-color: #166534; display: block; }}
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h2>🔒 Bilas.id Direct OAuth Bridge</h2>
-        <p>Authorize your Bilas.id AI Agent directly using Google Single Sign-On (SSO).</p>
-
-        <div class="step-box">
-            <div class="step-title">Direct Google SSO Login</div>
-            <p class="step-desc">Click below to open the official Google OAuth sign-in window directly. Once you pick your account, your Bilas session automatically transfers here!</p>
-            <button onclick="launchGoogleOAuth()" class="btn">
-                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-                Sign in with Google OAuth
-            </button>
-        </div>
-
-        <div id="statusBox" class="status"></div>
-    </div>
-
-    <script>
-        function checkStatus() {{
-            fetch('/status')
-                .then(r => r.json())
-                .then(d => {{
-                    if (d.authorized) {{
-                        document.getElementById('statusBox').className = 'status success';
-                        document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized Successfully!</strong> You may close this window.';
-                    }}
-                }}).catch(() => {{}});
-        }}
-        setInterval(checkStatus, 1500);
-
-        function launchGoogleOAuth() {{
-            const popup = window.open('/google-oauth', 'BilasGoogleOAuth', 'width=520,height=680');
-            const timer = setInterval(() => {{
-                if (!popup || popup.closed) {{
-                    clearInterval(timer);
-                    return;
-                }}
-                try {{
-                    const href = popup.location.href;
-                    if (href && href.includes('web.bilas.id')) {{
-                        let authDataStr = popup.localStorage.getItem('authData');
-                        let jwt = '';
-                        let outletId = popup.localStorage.getItem('activeOutlet') || popup.localStorage.getItem('outlet_id') || '';
-                        if (authDataStr) {{
-                            try {{
-                                let parsedData = JSON.parse(authDataStr);
-                                jwt = parsedData.extendedToken || parsedData.token || '';
-                            }} catch(e) {{}}
-                        }}
-                        if (!jwt) {{
-                            jwt = popup.localStorage.getItem('extendedToken') || popup.localStorage.getItem('token') || popup.sessionStorage.getItem('extendedToken') || popup.sessionStorage.getItem('token') || '';
-                        }}
-                        if (jwt) {{
-                            fetch('http://127.0.0.1:{port}/token', {{
-                                method: 'POST',
-                                headers: {{ 'Content-Type': 'application/json' }},
-                                body: JSON.stringify({{ jwt: jwt, outlet_id: outletId }})
-                            }}).then(() => {{
-                                popup.close();
-                                clearInterval(timer);
-                                document.getElementById('statusBox').className = 'status success';
-                                document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized!</strong> Session captured via Google SSO.';
-                            }});
-                        }}
-                    }}
-                }} catch (e) {{}}
-            }}, 500);
-        }}
-    </script>
-</body>
-</html>"""
-            self.wfile.write(html_content.encode("utf-8"))
-
+def login_via_google_sso_popup():
+    """Opens a Playwright browser window directly at Google's OAuth page for Bilas.id.
+    User picks their Google account, login completes on web.bilas.id, and the
+    network response carrying the JWT is intercepted automatically.
+    Browser closes itself once the token is captured.
+    """
     try:
-        httpd = socketserver.TCPServer(("127.0.0.1", port), AuthBridgeHandler)
-    except Exception as e:
-        return json.dumps({"status": "error", "message": f"Could not bind Remote Auth Bridge server to port {port}: {e}"})
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return json.dumps({
+            "status": "error",
+            "message": "Playwright is not installed. Run 'pip install playwright' and 'playwright install' first."
+        }, indent=2)
 
-    server_thread = threading.Thread(target=httpd.serve_forever)
-    server_thread.daemon = True
-    server_thread.start()
-
-    bridge_url = f"http://localhost:{port}"
     print("\n=======================================================")
-    print("   [Method 2: Automated OAuth Auth Bridge Server]      ")
+    print("   [Method 2: Direct Google SSO Login]                 ")
     print("=======================================================")
-    print(f"🔒 Server bound locally to: {bridge_url}")
-    print("👉 Open the URL above to connect your Bilas.id account.")
+    print("1. Opening Google Sign-In for Bilas.id...")
+    print("2. Pick your Google account or enter credentials.")
+    print("3. Token captured automatically — browser closes itself!")
     print("-------------------------------------------------------\n")
 
-    start_time = time.time()
-    while time.time() - start_time < 300:
-        if captured_data.get("jwt"):
-            if not captured_data.get("outlet_id"):
-                payload = jwt_decode_payload(captured_data["jwt"])
-                h = dict(APP_TOKENS)
-                h["Authorization"] = "Bearer " + captured_data["jwt"]
-                try:
-                    req = urllib.request.Request("https://apiweb.bilas.id/web/outlet/profil", headers=h, method="GET")
-                    resp = urllib.request.urlopen(req, timeout=5)
-                    res = json.loads(resp.read().decode("utf-8"))
-                    if res.get("result", {}).get("id"):
-                        captured_data["outlet_id"] = res["result"]["id"]
-                except Exception:
-                    pass
-            break
-        time.sleep(1)
+    captured_state = {"jwt": "", "outlet_id": "", "user_id": ""}
 
-    httpd.shutdown()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context()
+        page = context.new_page()
 
-    if captured_data.get("jwt"):
-        payload = jwt_decode_payload(captured_data["jwt"])
+        def handle_response(response):
+            """Intercept API responses that carry the JWT after login."""
+            try:
+                url = response.url
+                # googleLogin API response carries the session token
+                if "google-login" in url or "google-register" in url:
+                    data = response.json()
+                    res = data.get("result", {})
+                    token = res.get("extendedToken") or res.get("token")
+                    if token:
+                        captured_state["jwt"] = token
+                        payload = jwt_decode_payload(token)
+                        captured_state["user_id"] = payload.get("id")
+                        outlets = res.get("outletlist") or res.get("outletList") or []
+                        if outlets:
+                            captured_state["outlet_id"] = outlets[0].get("id", "")
+                # Also catch refresh-token and generic login endpoints
+                if "/refresh-token" in url or "/login/" in url:
+                    data = response.json()
+                    res = data.get("result", {})
+                    token = res.get("extendedToken") or res.get("token")
+                    if token and not captured_state.get("jwt"):
+                        captured_state["jwt"] = token
+                        payload = jwt_decode_payload(token)
+                        captured_state["user_id"] = payload.get("id")
+                        outlets = res.get("outletlist") or res.get("outletList") or []
+                        if outlets:
+                            captured_state["outlet_id"] = outlets[0].get("id", "")
+            except Exception:
+                pass
+
+        page.on("response", handle_response)
+
+        # Navigate to Bilas.id login page and auto-click "Masuk dengan Google"
+        page.goto("https://web.bilas.id/masuk")
+        try:
+            page.wait_for_timeout(2000)
+            google_btn = page.get_by_role("button", name="Masuk dengan Google")
+            if google_btn.is_visible():
+                google_btn.click()
+                print("   → Clicked 'Masuk dengan Google' — waiting for account picker...")
+        except Exception:
+            # If auto-click fails, user can click manually
+            print("   → Please click 'Masuk dengan Google' in the browser window.")
+
+        # Wait for token capture (up to 120 seconds)
+        start_time = time.time()
+        while time.time() - start_time < 120:
+            if captured_state.get("jwt"):
+                # Give the page a moment to finish its redirect
+                page.wait_for_timeout(2000)
+                break
+            page.wait_for_timeout(500)
+
+        browser.close()
+
+    if captured_state.get("jwt"):
+        # Auto-resolve outlet_id if not captured from login response
+        if not captured_state.get("outlet_id"):
+            h = dict(APP_TOKENS)
+            h["Authorization"] = "Bearer " + captured_state["jwt"]
+            try:
+                req = urllib.request.Request("https://apiweb.bilas.id/web/outlet/profil", headers=h, method="GET")
+                resp = urllib.request.urlopen(req, timeout=10)
+                res = json.loads(resp.read().decode("utf-8"))
+                if res.get("result", {}).get("id"):
+                    captured_state["outlet_id"] = res["result"]["id"]
+            except Exception:
+                pass
+
+        payload = jwt_decode_payload(captured_state["jwt"])
         st = {
-            "jwt": captured_data["jwt"],
-            "user_id": payload.get("id"),
-            "outlet_id": captured_data.get("outlet_id", ""),
+            "jwt": captured_state["jwt"],
+            "user_id": captured_state.get("user_id") or payload.get("id"),
+            "outlet_id": captured_state.get("outlet_id", ""),
             "exp": payload.get("exp"),
             "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%S")
         }
         save_state(st)
         return json.dumps({
             "status": "success",
-            "message": "✅ Direct Google OAuth Authorization Successful! Session state saved to ~/.bilas_id/",
-            "outlet_id": st["outlet_id"]
+            "message": "✅ Google SSO login successful! Session token captured & saved to ~/.bilas_id/",
+            "outlet_id": st["outlet_id"],
+            "expires_at": st["exp"]
         }, indent=2)
     else:
         return json.dumps({
             "status": "error",
-            "message": "❌ Remote Auth Bridge timed out."
+            "message": "❌ Login timed out or token was not captured. Please try again."
         }, indent=2)
 def save_manual_credentials(jwt_token: str, outlet_id: str):
     payload = jwt_decode_payload(jwt_token)
@@ -450,11 +313,11 @@ def interactive_onboarding_menu():
     print("   [Bilas.id MCP Server Authentication Suite]          ")
     print("=======================================================")
     print("Select how you would like to connect your Bilas.id account:\n")
-    print("1. 🖥️ Interactive GUI Browser (Local Machine with Playwright)")
-    print("2. 🌐 Automated OAuth Bridge (Cloud / Headless Server via Local Web Link)")
+    print("1. 🖥️ Interactive GUI Browser Login (Opens Bilas.id login page)")
+    print("2. 🔐 Direct Google SSO Login (Opens Google account picker directly)")
     print("3. 🔑 Manual Token & Outlet ID Entry")
     print("4. ❌ Cancel\n")
-    
+
     try:
         choice = input("Enter choice (1-4): ").strip()
     except Exception:
@@ -463,7 +326,7 @@ def interactive_onboarding_menu():
     if choice == "1":
         return login_via_playwright_gui()
     elif choice == "2":
-        return start_remote_auth_bridge()
+        return login_via_google_sso_popup()
     elif choice == "3":
         jwt = input("Paste Extended JWT Token: ").strip()
         outlet = input("Enter Outlet ID: ").strip()
@@ -483,9 +346,9 @@ def get_valid_headers():
             "👉 Option A (Local Desktop GUI):\n"
             "   Run tool 'bilas_launch_browser_login' or command:\n"
             "   bilas-mcp --browser-login\n\n"
-            "👉 Option B (Automated OAuth Bridge):\n"
+            "👉 Option B (Direct Google SSO Login):\n"
             "   Run tool 'bilas_start_remote_auth_bridge' or command:\n"
-            "   bilas-mcp --remote-bridge\n\n"
+            "   bilas-mcp --google-sso\n\n"
             "👉 Option C (Interactive Onboarding Menu):\n"
             "   bilas-mcp --onboard\n\n"
             "👉 Option D (Cloud Environment Variables):\n"
@@ -524,8 +387,8 @@ def bilas_launch_browser_login() -> str:
 
 @mcp.tool()
 def bilas_start_remote_auth_bridge() -> str:
-    """Start a temporary 1-Click Automated OAuth Auth Bridge HTTP server bound to localhost (127.0.0.1:8765). Automatically captures session state."""
-    return start_remote_auth_bridge()
+    """Launch Direct Google SSO login — opens browser at Google's account picker for Bilas.id and captures the session token automatically."""
+    return login_via_google_sso_popup()
 
 @mcp.tool()
 def bilas_set_manual_credentials(jwt_token: str, outlet_id: str) -> str:
@@ -718,8 +581,8 @@ def main():
         res = login_via_playwright_gui()
         print(res)
         return
-    elif "--remote-bridge" in sys.argv:
-        res = start_remote_auth_bridge()
+    elif "--remote-bridge" in sys.argv or "--google-sso" in sys.argv:
+        res = login_via_google_sso_popup()
         print(res)
         return
     elif "--login" in sys.argv or "--onboard" in sys.argv:
