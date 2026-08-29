@@ -1,4 +1,4 @@
-# Bilas.id MCP Server (v1.4.0)
+# Bilas.id MCP Server (v1.5.0)
 
 Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 
@@ -17,6 +17,19 @@ When running on headless cloud servers or local machines without terminal popups
 3. **Auto-Outlet Resolution**: The server automatically queries the user's outlet business profile to fetch their active `outlet_id` without manual entry.
 
 ---
+
+
+### ⚡ Direct CLI Token Onboarding (`--token`)
+
+Agents or automation scripts can save session credentials directly without opening a browser:
+
+```bash
+# Pass JWT token directly (outlet_id is auto-resolved via profile API)
+bilas-mcp --token "eyJhbGci..."
+
+# Pass both JWT token and Outlet ID
+bilas-mcp --token "eyJhbGci..." --outlet "2cvnOPoOgK9uZBQCc40c"
+```
 
 ## 🛠️ Complete Feature & Tool Suite
 
