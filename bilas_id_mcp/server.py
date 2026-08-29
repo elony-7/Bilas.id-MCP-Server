@@ -1,9 +1,16 @@
-"""Bilas.id Clean MCP Server Module
+"""Bilas.id Clean MCP Server Module (v1.2.0)
 
-Guarantees 100% isolation & zero hardcoded credentials:
-  - Stores session state ONLY in the user's OS home directory (~/.bilas_id/token_state.json)
-  - Contains NO hardcoded JWT tokens, NO hardcoded outlet IDs, and NO local cached credentials
-  - Guides new users to launch interactive browser login on first run
+Comprehensive Model Context Protocol (MCP) server for Bilas.id POS & Reporting Platform:
+  - Multi-Modal Onboarding (Interactive GUI Browser, Remote Auth Bridge, Manual Token Paste, Env Vars)
+  - 100% isolated session token management in user OS home (~/.bilas_id/token_state.json)
+  - Zero hardcoded tokens or user IDs in codebase
+  - 5-Column Per-Cashbox Accounting (Saldo Awal + Debit - Kredit = Saldo Akhir)
+  - Financial Corrections (Expense / Income addition & soft deletion)
+  - Operational Expense/Income Category Lookup
+  - Order & Customer Transaction Search with Filter & Pagination
+  - Production Pipeline Counter & Order Status Tracking
+  - IoT Smart Laundry Machine Control & Real-time Monitoring
+  - Outlet Business Profile & Settings Configuration
 """
 import base64
 import json
@@ -13,10 +20,12 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+import http.server
+import socketserver
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# User-isolated state path in user's OS home directory
 USER_HOME = Path.home()
 CONFIG_DIR = USER_HOME / ".bilas_id"
 STATE_FILE = CONFIG_DIR / "token_state.json"
@@ -35,6 +44,18 @@ def ensure_config_dir():
 
 def load_state():
     ensure_config_dir()
+    env_jwt = os.environ.get("BILAS_JWT_TOKEN")
+    env_outlet = os.environ.get("BILAS_OUTLET_ID")
+    if env_jwt and env_outlet:
+        payload = jwt_decode_payload(env_jwt)
+        return {
+            "jwt": env_jwt,
+            "outlet_id": env_outlet,
+            "user_id": payload.get("id"),
+            "exp": payload.get("exp"),
+            "source": "environment_variables"
+        }
+
     if STATE_FILE.exists():
         try:
             return json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -51,7 +72,10 @@ def jwt_decode_payload(jwt_str):
         return {}
     p = jwt_str.split(".")[1]
     p += "=" * (-len(p) % 4)
-    return json.loads(base64.urlsafe_b64decode(p))
+    try:
+        return json.loads(base64.urlsafe_b64decode(p))
+    except Exception:
+        return {}
 
 def refresh_jwt_token(st):
     if not st.get("jwt"):
@@ -66,18 +90,17 @@ def refresh_jwt_token(st):
             st["jwt"] = d["result"]["extendedToken"]
             payload = jwt_decode_payload(st["jwt"])
             st["exp"] = payload.get("exp") or d["result"].get("expiredAt")
-            st["user_id"] = payload.get("id")
+            if payload.get("id"):
+                st["user_id"] = payload.get("id")
             st["last_refresh"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             save_state(st)
             return True
     except Exception as e:
-        sys.stderr.write(f"[Bilas MCP] Token refresh failed: {e}\n")
+        sys.stderr.write(f"[Bilas MCP] Token refresh failed: {e}
+")
     return False
 
-def trigger_interactive_browser_login():
-    """Launches Playwright GUI browser window to let user log in safely via web UI.
-    Intercepts the user's JWT token and outlet ID from network responses and saves it locally.
-    """
+def login_via_playwright_gui():
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -86,13 +109,15 @@ def trigger_interactive_browser_login():
             "message": "Playwright is not installed. Run 'pip install playwright' and 'playwright install' first."
         }, indent=2)
 
-    print("\n=======================================================")
-    print("   [Bilas.id Interactive Browser Authentication]       ")
+    print("
+=======================================================")
+    print("   [Method 1: Interactive Browser GUI Authentication]  ")
     print("=======================================================")
     print("1. Opening bilas.id login page in browser...")
     print("2. Please log in using your Google account, OTP, or Password.")
     print("3. Once logged in, your token will be saved LOCALLY!")
-    print("-------------------------------------------------------\n")
+    print("-------------------------------------------------------
+")
 
     captured_state = {"jwt": "", "outlet_id": ""}
 
@@ -150,22 +175,201 @@ def trigger_interactive_browser_login():
             "message": "❌ Login timed out or token was not captured."
         }, indent=2)
 
+def start_remote_auth_bridge(port=8765):
+    captured_data = {"jwt": "", "outlet_id": ""}
+
+    class AuthBridgeHandler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass
+
+        def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/token":
+                query = urllib.parse.parse_qs(parsed.query)
+                jwt = query.get("jwt", [""])[0]
+                outlet = query.get("outlet_id", [""])[0]
+                if jwt and outlet:
+                    captured_data["jwt"] = jwt
+                    captured_data["outlet_id"] = outlet
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(b"<html><body style='font-family:sans-serif; text-align:center; padding:50px; background:#f4f6f8;'><h2 style='color:#2e7d32;'>&#9989; Authentication Successful!</h2><p>Your session token has been securely transferred to your Cloud Agent.</p><p>You may close this tab now.</p></body></html>")
+                    return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            html_content = '''<!DOCTYPE html>
+<html>
+<head>
+    <title>Bilas.id Cloud Agent Remote Authentication</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .card { background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 480px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; }
+        h2 { margin-top: 0; color: #38bdf8; }
+        p { color: #94a3b8; line-height: 1.5; font-size: 14px; }
+        .btn { display: block; width: 100%; padding: 12px; margin: 12px 0; background: #0284c7; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none; text-align: center; box-sizing: border-box; }
+        .btn:hover { background: #0369a1; }
+        input { width: 100%; padding: 12px; margin: 8px 0 16px 0; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: white; box-sizing: border-box; }
+        label { font-size: 12px; color: #cbd5e1; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🔒 Bilas.id Agent Remote Auth Bridge</h2>
+        <p>Connect your Cloud AI Agent to Bilas.id securely without sharing raw login credentials with the server.</p>
+        <a href="https://web.bilas.id/login" target="_blank" class="btn">1. Open Bilas.id Web Login</a>
+        <form method="GET" action="/token">
+            <label>2. Paste Extended Token (JWT)</label>
+            <input type="text" name="jwt" placeholder="eyJhbGciOiJIUzI1Ni..." required />
+            <label>3. Outlet ID</label>
+            <input type="text" name="outlet_id" placeholder="2cvnOPoOgK9uZBQCc40c" required />
+            <button type="submit" class="btn" style="background:#16a34a;">4. Authorize Cloud Agent</button>
+        </form>
+    </div>
+</body>
+</html>'''
+            self.wfile.write(html_content.encode("utf-8"))
+
+    try:
+        httpd = socketserver.TCPServer(("0.0.0.0", port), AuthBridgeHandler)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Could not bind Remote Auth Bridge server to port {port}: {e}"})
+
+    server_thread = threading.Thread(target=httpd.serve_forever)
+    server_thread.daemon = True
+    server_thread.start()
+
+    bridge_url = f"http://localhost:{port}"
+    print("
+=======================================================")
+    print("   [Method 2: Remote Auth Bridge Server Started]       ")
+    print("=======================================================")
+    print(f"👉 Please open this URL in your browser/phone:")
+    print(f"   {bridge_url}")
+    print("-------------------------------------------------------
+")
+
+    start_time = time.time()
+    while time.time() - start_time < 300:
+        if captured_data.get("jwt") and captured_data.get("outlet_id"):
+            break
+        time.sleep(1)
+
+    httpd.shutdown()
+
+    if captured_data.get("jwt"):
+        payload = jwt_decode_payload(captured_data["jwt"])
+        st = {
+            "jwt": captured_data["jwt"],
+            "user_id": payload.get("id"),
+            "outlet_id": captured_data["outlet_id"],
+            "exp": payload.get("exp"),
+            "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%S")
+        }
+        save_state(st)
+        return json.dumps({
+            "status": "success",
+            "message": "✅ Remote Authentication Successful! Session state saved to ~/.bilas_id/",
+            "outlet_id": st["outlet_id"]
+        }, indent=2)
+    else:
+        return json.dumps({
+            "status": "error",
+            "message": "❌ Remote Auth Bridge timed out."
+        }, indent=2)
+
+def save_manual_credentials(jwt_token: str, outlet_id: str):
+    payload = jwt_decode_payload(jwt_token)
+    st = {
+        "jwt": jwt_token.strip(),
+        "outlet_id": outlet_id.strip(),
+        "user_id": payload.get("id"),
+        "exp": payload.get("exp"),
+        "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%S")
+    }
+    save_state(st)
+    return json.dumps({
+        "status": "success",
+        "message": "✅ Credentials saved successfully to ~/.bilas_id/token_state.json!",
+        "outlet_id": st["outlet_id"],
+        "expires_at": st["exp"]
+    }, indent=2)
+
+def interactive_onboarding_menu():
+    print("
+=======================================================")
+    print("   [Bilas.id MCP Server Authentication Suite]          ")
+    print("=======================================================")
+    print("Select how you would like to connect your Bilas.id account:
+")
+    print("1. 🖥️ Interactive GUI Browser (Local Machine with Playwright)")
+    print("2. 🌐 Remote Auth Bridge (Cloud / Headless Server via Web Link)")
+    print("3. 🔑 Manual Token & Outlet ID Entry")
+    print("4. ❌ Cancel
+")
+    
+    try:
+        choice = input("Enter choice (1-4): ").strip()
+    except Exception:
+        choice = "2"
+
+    if choice == "1":
+        return login_via_playwright_gui()
+    elif choice == "2":
+        return start_remote_auth_bridge()
+    elif choice == "3":
+        jwt = input("Paste Extended JWT Token: ").strip()
+        outlet = input("Enter Outlet ID: ").strip()
+        return save_manual_credentials(jwt, outlet)
+    else:
+        return json.dumps({"status": "cancelled", "message": "Onboarding cancelled."})
+
 def get_valid_headers():
     st = load_state()
     if not st.get("jwt") or not st.get("outlet_id"):
         guidance = (
-            "\n=======================================================\n"
-            " [Bilas.id MCP] AUTHENTICATION REQUIRED                 \n"
-            "=======================================================\n"
-            "You haven't connected your bilas.id account yet.\n"
-            "To manage cashboxes, reports, orders, and settings,\n"
-            "please log in once using your web browser.\n\n"
-            "👉 Action Needed:\n"
-            "   Run tool 'bilas_launch_browser_login' or command:\n"
-            "   bilas-mcp --browser-login\n\n"
-            "A browser window will pop up. Once you log in, your\n"
-            "session token will be saved locally and auto-refreshed!\n"
-            "=======================================================\n"
+            "
+=======================================================
+"
+            " [Bilas.id MCP] AUTHENTICATION REQUIRED                 
+"
+            "=======================================================
+"
+            "You haven't connected your bilas.id account yet.
+"
+            "Choose your preferred onboarding method:
+
+"
+            "👉 Option A (Local Desktop GUI):
+"
+            "   Run tool 'bilas_launch_browser_login' or command:
+"
+            "   bilas-mcp --browser-login
+
+"
+            "👉 Option B (Cloud / Headless Server Remote Bridge):
+"
+            "   Run tool 'bilas_start_remote_auth_bridge' or command:
+"
+            "   bilas-mcp --remote-bridge
+
+"
+            "👉 Option C (Interactive Onboarding Menu):
+"
+            "   bilas-mcp --onboard
+
+"
+            "👉 Option D (Cloud Environment Variables):
+"
+            "   export BILAS_JWT_TOKEN='...'
+"
+            "   export BILAS_OUTLET_ID='...'
+"
+            "=======================================================
+"
         )
         raise PermissionError(guidance)
 
@@ -183,24 +387,36 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.0.0",
-    description="Clean Bilas.id Agent Integration Suite with Automated Browser Login Onboarding"
+    version="1.2.0",
+    description="Comprehensive Bilas.id Agent Integration Suite with Multi-Modal Onboarding (GUI Browser, Remote Auth Bridge, Env Vars)"
 )
+
+# ---------------------------------------------------------------------------
+# 1. AUTH & ONBOARDING TOOLS
+# ---------------------------------------------------------------------------
 
 @mcp.tool()
 def bilas_launch_browser_login() -> str:
-    """Launch interactive browser login window. The user logs in via web UI, and the MCP captures the session token automatically."""
-    return trigger_interactive_browser_login()
+    """Launch interactive Playwright GUI browser login window for local machines."""
+    return login_via_playwright_gui()
+
+@mcp.tool()
+def bilas_start_remote_auth_bridge() -> str:
+    """Start a temporary Remote Auth Bridge HTTP server for Cloud/Headless environments. Returns a web URL to authorize login on any device."""
+    return start_remote_auth_bridge()
+
+@mcp.tool()
+def bilas_set_manual_credentials(jwt_token: str, outlet_id: str) -> str:
+    """Manually set JWT token and Outlet ID directly into local configuration state."""
+    return save_manual_credentials(jwt_token, outlet_id)
+
+# ---------------------------------------------------------------------------
+# 2. FINANCIALS & CASHBOX ACCOUNTING
+# ---------------------------------------------------------------------------
 
 @mcp.tool()
 def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str, base_opening_balances: dict = None) -> str:
-    """Computes exact per-cashbox accounting table (Saldo Awal + Debit - Kredit = Saldo Akhir).
-
-    Args:
-        tgl_awal: Start date in YYYY/MM/DD format (e.g. '2026/08/01')
-        tgl_akhir: End date in YYYY/MM/DD format (e.g. '2026/08/30')
-        base_opening_balances: Optional dict of opening balances per cashbox (e.g. {"Tunai": 800000, "BCA": 620746})
-    """
+    """Computes exact per-cashbox accounting table (Saldo Awal + Debit - Kredit = Saldo Akhir)."""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
 
@@ -239,6 +455,20 @@ def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str, base_opening_balance
 
     summary = {"cashbox": "TOTAL", "saldo_awal": tot_awal, "debit": tot_debit, "kredit": tot_kredit, "saldo_akhir": tot_akhir}
     return json.dumps({"tgl_awal": tgl_awal, "tgl_akhir": tgl_akhir, "rows": rows, "summary": summary}, indent=2, ensure_ascii=False)
+
+@mcp.tool()
+def bilas_get_financial_categories() -> str:
+    """Retrieve operational financial expense & income categories configured for the outlet."""
+    headers, st = get_valid_headers()
+    outlet_id = st["outlet_id"]
+    url = f"https://apiweb.bilas.id/web/keuangan/kategori?id={outlet_id}"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        res = json.loads(resp.read().decode("utf-8"))
+        return json.dumps(res, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
 @mcp.tool()
 def bilas_add_expense(cashbox: str, category: str, amount: int, description: str, date_mm_dd_yyyy: str) -> str:
@@ -291,33 +521,17 @@ def bilas_delete_expense(keuangan_id: str, date_mm_dd_yyyy: str) -> str:
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
+# ---------------------------------------------------------------------------
+# 3. TRANSACTIONS & PRODUCTION PIPELINE
+# ---------------------------------------------------------------------------
+
 @mcp.tool()
-def bilas_search_invoice(query: str) -> str:
-    """Lookup invoice or customer transaction history by nota number, customer name, or phone."""
+def bilas_search_invoice(query: str = "", page: int = 1, limit: int = 20) -> str:
+    """Lookup transactions or customer history by nota number (TRX/...), customer name, or phone number."""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
     q = urllib.parse.quote(query, safe="")
-    url = f"https://apiweb.bilas.id/web/transaksi/reguler/all?id={outlet_id}&page=1&limit=20&search={q}"
-    req = urllib.request.Request(url, headers=headers, method="GET")
-    try:
-        resp = urllib.request.urlopen(req, timeout=15)
-        res = json.loads(resp.read().decode("utf-8"))
-        return json.dumps(res, indent=2, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)}, indent=2)
-
-
-
-# ---------------------------------------------------------------------------
-# ADDITIONAL FULL PLATFORM TOOLS (v1.1.0)
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-def bilas_get_financial_categories() -> str:
-    """Retrieve operational financial expense & income categories configured for the outlet."""
-    headers, st = get_valid_headers()
-    outlet_id = st["outlet_id"]
-    url = f"https://apiweb.bilas.id/web/keuangan/kategori?id={outlet_id}"
+    url = f"https://apiweb.bilas.id/web/transaksi/reguler/all?id={outlet_id}&page={page}&limit={limit}&search={q}"
     req = urllib.request.Request(url, headers=headers, method="GET")
     try:
         resp = urllib.request.urlopen(req, timeout=15)
@@ -341,6 +555,10 @@ def bilas_get_production_summary() -> str:
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
+# ---------------------------------------------------------------------------
+# 4. IOT SMART MACHINES (WASHERS & DRYERS)
+# ---------------------------------------------------------------------------
+
 @mcp.tool()
 def bilas_list_machines() -> str:
     """List all connected IoT smart laundry machines (Washers & Dryers) and their current status."""
@@ -354,6 +572,10 @@ def bilas_list_machines() -> str:
         return json.dumps(res, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+# ---------------------------------------------------------------------------
+# 5. OUTLET PROFILE & SETTINGS
+# ---------------------------------------------------------------------------
 
 @mcp.tool()
 def bilas_get_outlet_profile() -> str:
@@ -370,8 +592,16 @@ def bilas_get_outlet_profile() -> str:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
 def main():
-    if "--browser-login" in sys.argv or "--login" in sys.argv:
-        res = trigger_interactive_browser_login()
+    if "--browser-login" in sys.argv:
+        res = login_via_playwright_gui()
+        print(res)
+        return
+    elif "--remote-bridge" in sys.argv:
+        res = start_remote_auth_bridge()
+        print(res)
+        return
+    elif "--login" in sys.argv or "--onboard" in sys.argv:
+        res = interactive_onboarding_menu()
         print(res)
         return
     mcp.run()
