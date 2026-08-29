@@ -82,7 +82,7 @@ def refresh_jwt_token(st):
         return False
     h = dict(APP_TOKENS)
     h["Authorization"] = "Bearer " + st["jwt"]
-    req = urllib.request.Request("https://apiweb.bilas.id/web/user/auth/refresh-token", data=b"{}", headers=h, method="POST")
+    req = urllib.request.Request("https://apiweb.bilas.id/web/user/auth/refresh-token", data=b'{{}}', headers=h, method="POST")
     try:
         resp = urllib.request.urlopen(req, timeout=15)
         d = json.loads(resp.read().decode("utf-8"))
@@ -167,27 +167,27 @@ def login_via_system_default_browser(port=8765):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
 
-            html_content = f"""<!DOCTYPE html>
+            html_content = """<!DOCTYPE html>
 <html>
 <head>
     <title>Bilas.id Agent Onboarding</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }}
-        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 560px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
-        h2 {{ margin-top: 0; color: #38bdf8; font-size: 22px; }}
-        p {{ color: #94a3b8; line-height: 1.5; font-size: 14px; margin-bottom: 20px; }}
-        .btn {{ display: block; width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; text-align: center; margin-bottom: 12px; }}
-        .btn:hover {{ background: #0369a1; transform: translateY(-1px); }}
-        .btn-green {{ background: #16a34a; margin-top: 8px; }}
-        .btn-green:hover {{ background: #15803d; }}
-        .status {{ margin-top: 20px; font-size: 14px; font-weight: 500; padding: 14px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; display: none; }}
-        .success {{ color: #4ade80; border-color: #166534; display: block; }}
-        .step-box {{ background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 18px; margin-top: 16px; text-align: left; }}
-        .step-title {{ font-size: 13px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-bottom: 6px; }}
-        .step-desc {{ font-size: 13px; color: #94a3b8; margin: 0 0 12px 0; }}
-        input {{ width: 100%; padding: 12px; background: #1e293b; border: 1px solid #475569; color: white; border-radius: 8px; box-sizing: border-box; margin-top: 8px; font-size: 13px; }}
-        input:focus {{ border-color: #38bdf8; outline: none; }}
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .card { background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 560px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }
+        h2 { margin-top: 0; color: #38bdf8; font-size: 22px; }
+        p { color: #94a3b8; line-height: 1.5; font-size: 14px; margin-bottom: 20px; }
+        .btn { display: block; width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; text-align: center; margin-bottom: 12px; }
+        .btn:hover { background: #0369a1; transform: translateY(-1px); }
+        .btn-green { background: #16a34a; margin-top: 8px; }
+        .btn-green:hover { background: #15803d; }
+        .status { margin-top: 20px; font-size: 14px; font-weight: 500; padding: 14px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; display: none; }
+        .success { color: #4ade80; border-color: #166534; display: block; }
+        .step-box { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 18px; margin-top: 16px; text-align: left; }
+        .step-title { font-size: 13px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-bottom: 6px; }
+        .step-desc { font-size: 13px; color: #94a3b8; margin: 0 0 12px 0; }
+        input { width: 100%; padding: 12px; background: #1e293b; border: 1px solid #475569; color: white; border-radius: 8px; box-sizing: border-box; margin-top: 8px; font-size: 13px; }
+        input:focus { border-color: #38bdf8; outline: none; }
     </style>
 </head>
 <body>
@@ -196,17 +196,15 @@ def login_via_system_default_browser(port=8765):
         <p>Log in using your system browser with 100% Google security compliance.</p>
 
         <div class="step-box">
-            <div class="step-title">Step 1: Open Bilas Web Login</div>
-            <p class="step-desc">Open Bilas.id web login in a new tab if you haven't logged in yet.</p>
-            <a href="https://web.bilas.id/masuk" target="_blank" class="btn">1. Open Bilas.id Web Login</a>
+            <div class="step-title">Step 1: Open Bilas Web Login Window</div>
+            <p class="step-desc">Click below to open web.bilas.id in a connected window.</p>
+            <button class="btn" onclick="openBilasWindow()">🌐 1. Open Bilas.id Window</button>
         </div>
 
         <div class="step-box">
-            <div class="step-title">Step 2: Connect Session Token</div>
-            <p class="step-desc">Drag the green button to your bookmarks bar, switch to your Bilas tab, and click it once!</p>
-            <a class="btn btn-green" href="javascript:(function(){{var a=JSON.parse(localStorage.getItem('authData')||'{{}}');var t=a.extendedToken||a.token||localStorage.getItem('extendedToken')||localStorage.getItem('token')||sessionStorage.getItem('extendedToken')||sessionStorage.getItem('token');var o=localStorage.getItem('activeOutlet')||localStorage.getItem('outlet_id')||'';if(!t){{alert('⚠️ Token not found in this tab! Make sure you are on web.bilas.id and logged in.');return;}}fetch('http://127.0.0.1:{port}/token',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{jwt:t,outlet_id:o}})}}).then(r=>r.json()).then(d=>alert('✅ Bilas.id Agent Authorized Successfully!')).catch(e=>alert('Error: '+e));}})();">
-                📌 Drag to Bookmarks: Authorize Bilas Agent
-            </a>
+            <div class="step-title">Step 2: Auto-Grab Token From Opened Window</div>
+            <p class="step-desc">Once logged in, click below to pull the token directly from your opened Bilas tab!</p>
+            <button class="btn btn-green" onclick="grabTokenFromWindow()">⚡ 2. Auto-Grab Token & Authorize Agent</button>
             <p class="step-desc" style="margin-top:12px; margin-bottom:4px;">Or paste your <code>authData</code> / JWT token JSON below:</p>
             <input type="text" id="jwtInput" placeholder="Paste token or authData JSON here..." oninput="handlePaste(this.value)">
         </div>
@@ -215,42 +213,86 @@ def login_via_system_default_browser(port=8765):
     </div>
 
     <script>
-        function sendTokenToLocalServer(jwt, outlet) {{
-            fetch('/token', {{
-                method: 'POST',
-                headers: {{ 'Content-Type': 'application/json' }},
-                body: JSON.stringify({{ jwt: jwt, outlet_id: outlet }})
-            }}).then(r => r.json()).then(d => {{
-                if (d.status === 'success') {{
-                    checkStatus();
-                }}
-            }}).catch(() => {{}});
-        }}
+        let bilasWin = null;
 
-        function handlePaste(val) {{
+        function openBilasWindow() {
+            bilasWin = window.open("https://web.bilas.id/masuk", "BilasAuthTab", "width=600,height=750");
+            startPoller();
+        }
+
+        function grabTokenFromWindow() {
+            if (!bilasWin || bilasWin.closed) {
+                bilasWin = window.open("https://web.bilas.id/masuk", "BilasAuthTab", "width=600,height=750");
+                alert("👉 Opened Bilas login window! Please log in there, then click this button again.");
+                return;
+            }
+            try {
+                let storage = bilasWin.localStorage;
+                let authStr = storage.getItem("authData") || "{}";
+                let authObj = JSON.parse(authStr);
+                let token = authObj.extendedToken || authObj.token || storage.getItem("extendedToken") || storage.getItem("token");
+                let outlet = storage.getItem("activeOutlet") || storage.getItem("outlet_id") || "";
+                if (token) {
+                    sendTokenToLocalServer(token, outlet);
+                    return;
+                }
+            } catch (e) {}
+            alert("👉 Token not detected yet. Make sure you are logged in inside the opened Bilas window!");
+        }
+
+        function startPoller() {
+            let interval = setInterval(() => {
+                if (!bilasWin || bilasWin.closed) { clearInterval(interval); return; }
+                try {
+                    let storage = bilasWin.localStorage;
+                    let authStr = storage.getItem("authData") || "{}";
+                    let authObj = JSON.parse(authStr);
+                    let token = authObj.extendedToken || authObj.token || storage.getItem("extendedToken") || storage.getItem("token");
+                    if (token) {
+                        sendTokenToLocalServer(token, storage.getItem("activeOutlet") || "");
+                        clearInterval(interval);
+                    }
+                } catch (e) {}
+            }, 1000);
+        }
+
+        function sendTokenToLocalServer(jwt, outlet) {
+            fetch("/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ jwt: jwt, outlet_id: outlet })
+            }).then(r => r.json()).then(d => {
+                if (d.status === "success") {
+                    checkStatus();
+                    if (bilasWin && !bilasWin.closed) bilasWin.close();
+                }
+            }).catch(() => {});
+        }
+
+        function handlePaste(val) {
             val = val.trim();
             let jwt = val;
-            let outlet = '';
-            try {{
+            let outlet = "";
+            try {
                 let parsed = JSON.parse(val);
                 jwt = parsed.extendedToken || parsed.token || val;
-                outlet = parsed.activeOutlet || parsed.outlet_id || '';
-            }} catch (e) {{}}
-            if (jwt.length > 20) {{
+                outlet = parsed.activeOutlet || parsed.outlet_id || "";
+            } catch (e) {}
+            if (jwt.length > 20) {
                 sendTokenToLocalServer(jwt, outlet);
-            }}
-        }}
+            }
+        }
 
-        function checkStatus() {{
-            fetch('/status')
+        function checkStatus() {
+            fetch("/status")
                 .then(r => r.json())
-                .then(d => {{
-                    if (d.authorized) {{
-                        document.getElementById('statusBox').className = 'status success';
-                        document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized Successfully!</strong> Session state saved to ~/.bilas_id/token_state.json. You may close this tab.';
-                    }}
-                }}).catch(() => {{}});
-        }}
+                .then(d => {
+                    if (d.authorized) {
+                        document.getElementById("statusBox").className = "status success";
+                        document.getElementById("statusBox").innerHTML = "✅ <strong>Agent Authorized Successfully!</strong> Session state saved to ~/.bilas_id/token_state.json. You may close this tab.";
+                    }
+                }).catch(() => {});
+        }
         setInterval(checkStatus, 1500);
     </script>
 </body>
