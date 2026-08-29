@@ -99,166 +99,77 @@ def refresh_jwt_token(st):
         sys.stderr.write(f"[Bilas MCP] Token refresh failed: {e}\n")
     return False
 
-def login_via_playwright_gui():
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return json.dumps({
-            "status": "error",
-            "message": "Playwright is not installed. Run 'pip install playwright' and 'playwright install' first."
-        }, indent=2)
-
-    print("\n=======================================================")
-    print("   [Method 1: Interactive Browser GUI Authentication]  ")
-    print("=======================================================")
-    print("1. Opening bilas.id login page in browser...")
-    print("2. Please log in using your Google account, OTP, or Password.")
-    print("3. Once logged in, your token will be saved LOCALLY!")
-    print("-------------------------------------------------------\n")
-
-    captured_state = {"jwt": "", "outlet_id": ""}
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context()
-        page = context.new_page()
-
-        def handle_response(response):
-            try:
-                if "/refresh-token" in response.url or "/login/" in response.url:
-                    data = response.json()
-                    res = data.get("result", {})
-                    token = res.get("extendedToken") or res.get("token")
-                    if token:
-                        captured_state["jwt"] = token
-                        payload = jwt_decode_payload(token)
-                        captured_state["user_id"] = payload.get("id")
-                        outlets = res.get("outletList", [])
-                        if outlets:
-                            captured_state["outlet_id"] = outlets[0]["id"]
-            except Exception:
-                pass
-
-        page.on("response", handle_response)
-        page.goto("https://web.bilas.id/login")
-
-        start_time = time.time()
-        while time.time() - start_time < 120:
-            if captured_state.get("jwt") and captured_state.get("outlet_id") and "/beranda" in page.url:
-                break
-            page.wait_for_timeout(1000)
-
-        browser.close()
-
-    if captured_state.get("jwt"):
-        payload = jwt_decode_payload(captured_state["jwt"])
-        st = {
-            "jwt": captured_state["jwt"],
-            "user_id": captured_state.get("user_id"),
-            "outlet_id": captured_state.get("outlet_id"),
-            "exp": payload.get("exp"),
-            "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%S")
-        }
-        save_state(st)
-        return json.dumps({
-            "status": "success",
-            "message": "✅ Login successful! Session token captured & saved locally to ~/.bilas_id/",
-            "outlet_id": st["outlet_id"],
-            "expires_at": st["exp"]
-        }, indent=2)
-    else:
-        return json.dumps({
-            "status": "error",
-            "message": "❌ Login timed out or token was not captured."
-        }, indent=2)
-
-def login_via_google_sso_popup():
-    """Opens a Playwright browser window directly at Google's OAuth page for Bilas.id.
-    User picks their Google account, login completes on web.bilas.id, and the
-    network response carrying the JWT is intercepted automatically.
-    Browser closes itself once the token is captured.
+def launch_browser_session(direct_google=False):
+    """Launches the user's actual installed browser (Chrome/Edge/Default) to let them log in.
+    Captures session token from network response automatically.
     """
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return json.dumps({
-            "status": "error",
-            "message": "Playwright is not installed. Run 'pip install playwright' and 'playwright install' first."
-        }, indent=2)
-
-    print("\n=======================================================")
-    print("   [Method 2: Direct Google SSO Login]                 ")
-    print("=======================================================")
-    print("1. Opening Google Sign-In for Bilas.id...")
-    print("2. Pick your Google account or enter credentials.")
-    print("3. Token captured automatically — browser closes itself!")
-    print("-------------------------------------------------------\n")
-
     captured_state = {"jwt": "", "outlet_id": "", "user_id": ""}
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context()
-        page = context.new_page()
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = None
+            # Attempt launching user's actual installed browsers first
+            for channel in ["chrome", "msedge", None]:
+                try:
+                    if channel:
+                        browser = p.chromium.launch(channel=channel, headless=False)
+                        print(f"   [Browser] Opened system-installed {channel.upper()} browser.")
+                    else:
+                        browser = p.chromium.launch(headless=False)
+                        print("   [Browser] Opened Chromium browser.")
+                    break
+                except Exception:
+                    continue
 
-        def handle_response(response):
-            """Intercept API responses that carry the JWT after login."""
-            try:
-                url = response.url
-                # googleLogin API response carries the session token
-                if "google-login" in url or "google-register" in url:
-                    data = response.json()
-                    res = data.get("result", {})
-                    token = res.get("extendedToken") or res.get("token")
-                    if token:
-                        captured_state["jwt"] = token
-                        payload = jwt_decode_payload(token)
-                        captured_state["user_id"] = payload.get("id")
-                        outlets = res.get("outletlist") or res.get("outletList") or []
-                        if outlets:
-                            captured_state["outlet_id"] = outlets[0].get("id", "")
-                # Also catch refresh-token and generic login endpoints
-                if "/refresh-token" in url or "/login/" in url:
-                    data = response.json()
-                    res = data.get("result", {})
-                    token = res.get("extendedToken") or res.get("token")
-                    if token and not captured_state.get("jwt"):
-                        captured_state["jwt"] = token
-                        payload = jwt_decode_payload(token)
-                        captured_state["user_id"] = payload.get("id")
-                        outlets = res.get("outletlist") or res.get("outletList") or []
-                        if outlets:
-                            captured_state["outlet_id"] = outlets[0].get("id", "")
-            except Exception:
-                pass
+            if browser:
+                context = browser.new_context()
+                page = context.new_page()
 
-        page.on("response", handle_response)
+                def handle_response(response):
+                    try:
+                        url = response.url
+                        if "google-login" in url or "google-register" in url or "/refresh-token" in url or "/login/" in url:
+                            data = response.json()
+                            res = data.get("result", {})
+                            token = res.get("extendedToken") or res.get("token")
+                            if token and not captured_state.get("jwt"):
+                                captured_state["jwt"] = token
+                                payload = jwt_decode_payload(token)
+                                captured_state["user_id"] = payload.get("id")
+                                outlets = res.get("outletlist") or res.get("outletList") or []
+                                if outlets:
+                                    captured_state["outlet_id"] = outlets[0].get("id", "")
+                    except Exception:
+                        pass
 
-        # Navigate to Bilas.id login page and auto-click "Masuk dengan Google"
-        page.goto("https://web.bilas.id/masuk")
-        try:
-            page.wait_for_timeout(2000)
-            google_btn = page.get_by_role("button", name="Masuk dengan Google")
-            if google_btn.is_visible():
-                google_btn.click()
-                print("   → Clicked 'Masuk dengan Google' — waiting for account picker...")
-        except Exception:
-            # If auto-click fails, user can click manually
-            print("   → Please click 'Masuk dengan Google' in the browser window.")
+                page.on("response", handle_response)
+                page.goto("https://web.bilas.id/masuk")
 
-        # Wait for token capture (up to 120 seconds)
-        start_time = time.time()
-        while time.time() - start_time < 120:
-            if captured_state.get("jwt"):
-                # Give the page a moment to finish its redirect
-                page.wait_for_timeout(2000)
-                break
-            page.wait_for_timeout(500)
+                if direct_google:
+                    try:
+                        page.wait_for_timeout(2000)
+                        google_btn = page.get_by_role("button", name="Masuk dengan Google")
+                        if google_btn.is_visible():
+                            google_btn.click()
+                            print("   → Clicked 'Masuk dengan Google' — waiting for Google Sign-In...")
+                    except Exception:
+                        print("   → Please click 'Masuk dengan Google' in your browser.")
 
-        browser.close()
+                start_time = time.time()
+                while time.time() - start_time < 180:
+                    if captured_state.get("jwt"):
+                        page.wait_for_timeout(2000)
+                        break
+                    page.wait_for_timeout(500)
+
+                browser.close()
+    except Exception as e:
+        import webbrowser
+        print(f"   [Default Browser] Opening web.bilas.id in system default browser...")
+        webbrowser.open("https://web.bilas.id/masuk")
 
     if captured_state.get("jwt"):
-        # Auto-resolve outlet_id if not captured from login response
         if not captured_state.get("outlet_id"):
             h = dict(APP_TOKENS)
             h["Authorization"] = "Bearer " + captured_state["jwt"]
@@ -282,15 +193,33 @@ def login_via_google_sso_popup():
         save_state(st)
         return json.dumps({
             "status": "success",
-            "message": "✅ Google SSO login successful! Session token captured & saved to ~/.bilas_id/",
+            "message": "✅ Authentication successful! Session token saved to ~/.bilas_id/",
             "outlet_id": st["outlet_id"],
             "expires_at": st["exp"]
         }, indent=2)
     else:
         return json.dumps({
             "status": "error",
-            "message": "❌ Login timed out or token was not captured. Please try again."
+            "message": "❌ Login timed out or token was not captured. Please complete login in your browser."
         }, indent=2)
+
+def login_via_playwright_gui():
+    print("\n=======================================================")
+    print("   [Method 1: System Browser GUI Authentication]      ")
+    print("=======================================================")
+    print("1. Opening Bilas.id login page in your installed browser...")
+    print("2. Log in using Google, OTP, or Password.")
+    print("-------------------------------------------------------\n")
+    return launch_browser_session(direct_google=False)
+
+def login_via_google_sso_popup():
+    print("\n=======================================================")
+    print("   [Method 2: Direct Google SSO Login]                 ")
+    print("=======================================================")
+    print("1. Opening Google Sign-In in your installed browser...")
+    print("2. Pick your Google account or enter credentials.")
+    print("-------------------------------------------------------\n")
+    return launch_browser_session(direct_google=True)
 def save_manual_credentials(jwt_token: str, outlet_id: str):
     payload = jwt_decode_payload(jwt_token)
     st = {
