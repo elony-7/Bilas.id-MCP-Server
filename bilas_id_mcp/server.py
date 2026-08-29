@@ -65,6 +65,14 @@ def load_state():
 
 def save_state(st):
     ensure_config_dir()
+    if st.get("outlet_id"):
+        out_raw = str(st["outlet_id"]).strip()
+        if out_raw.startswith("{") and out_raw.endswith("}"):
+            try:
+                out_obj = json.loads(out_raw)
+                st["outlet_id"] = out_obj.get("id") or out_raw
+            except Exception:
+                pass
     STATE_FILE.write_text(json.dumps(st, indent=2, ensure_ascii=False), encoding="utf-8")
 
 def jwt_decode_payload(jwt_str):
