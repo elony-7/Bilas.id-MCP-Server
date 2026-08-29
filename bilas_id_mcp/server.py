@@ -1,4 +1,4 @@
-"""Bilas.id Clean MCP Server Module (v1.2.0)
+"""Bilas.id Clean MCP Server Module (v1.2.2)
 
 Comprehensive Model Context Protocol (MCP) server for Bilas.id POS & Reporting Platform:
   - Multi-Modal Onboarding (Interactive GUI Browser, Remote Auth Bridge, Manual Token Paste, Env Vars)
@@ -96,8 +96,7 @@ def refresh_jwt_token(st):
             save_state(st)
             return True
     except Exception as e:
-        sys.stderr.write(f"[Bilas MCP] Token refresh failed: {e}
-")
+        sys.stderr.write(f"[Bilas MCP] Token refresh failed: {e}\n")
     return False
 
 def login_via_playwright_gui():
@@ -109,15 +108,13 @@ def login_via_playwright_gui():
             "message": "Playwright is not installed. Run 'pip install playwright' and 'playwright install' first."
         }, indent=2)
 
-    print("
-=======================================================")
+    print("\n=======================================================")
     print("   [Method 1: Interactive Browser GUI Authentication]  ")
     print("=======================================================")
     print("1. Opening bilas.id login page in browser...")
     print("2. Please log in using your Google account, OTP, or Password.")
     print("3. Once logged in, your token will be saved LOCALLY!")
-    print("-------------------------------------------------------
-")
+    print("-------------------------------------------------------\n")
 
     captured_state = {"jwt": "", "outlet_id": ""}
 
@@ -233,7 +230,6 @@ def start_remote_auth_bridge(port=8765):
 </html>'''
             self.wfile.write(html_content.encode("utf-8"))
 
-    # Bind strictly to 127.0.0.1 for local privacy by default
     try:
         httpd = socketserver.TCPServer(("127.0.0.1", port), AuthBridgeHandler)
     except Exception as e:
@@ -244,16 +240,14 @@ def start_remote_auth_bridge(port=8765):
     server_thread.start()
 
     bridge_url = f"http://localhost:{port}"
-    print("
-=======================================================")
+    print("\n=======================================================")
     print("   [Method 2: Remote Auth Bridge Server Started]       ")
     print("=======================================================")
     print(f"🔒 Server bound locally to: {bridge_url}")
     print("👉 If accessing from local machine/SSH tunnel, open the link above.")
     print("👉 OPTIONAL: If using Cloudflare Tunnel to expose remotely, run:")
     print(f"   cloudflared tunnel --url {bridge_url}")
-    print("-------------------------------------------------------
-")
+    print("-------------------------------------------------------\n")
 
     start_time = time.time()
     while time.time() - start_time < 300:
@@ -302,17 +296,14 @@ def save_manual_credentials(jwt_token: str, outlet_id: str):
     }, indent=2)
 
 def interactive_onboarding_menu():
-    print("
-=======================================================")
+    print("\n=======================================================")
     print("   [Bilas.id MCP Server Authentication Suite]          ")
     print("=======================================================")
-    print("Select how you would like to connect your Bilas.id account:
-")
+    print("Select how you would like to connect your Bilas.id account:\n")
     print("1. 🖥️ Interactive GUI Browser (Local Machine with Playwright)")
     print("2. 🌐 Remote Auth Bridge (Cloud / Headless Server via Local Web Link)")
     print("3. 🔑 Manual Token & Outlet ID Entry")
-    print("4. ❌ Cancel
-")
+    print("4. ❌ Cancel\n")
     
     try:
         choice = input("Enter choice (1-4): ").strip()
@@ -334,45 +325,23 @@ def get_valid_headers():
     st = load_state()
     if not st.get("jwt") or not st.get("outlet_id"):
         guidance = (
-            "
-=======================================================
-"
-            " [Bilas.id MCP] AUTHENTICATION REQUIRED                 
-"
-            "=======================================================
-"
-            "You haven't connected your bilas.id account yet.
-"
-            "Choose your preferred onboarding method:
-
-"
-            "👉 Option A (Local Desktop GUI):
-"
-            "   Run tool 'bilas_launch_browser_login' or command:
-"
-            "   bilas-mcp --browser-login
-
-"
-            "👉 Option B (Cloud / Headless Server Remote Bridge):
-"
-            "   Run tool 'bilas_start_remote_auth_bridge' or command:
-"
-            "   bilas-mcp --remote-bridge
-
-"
-            "👉 Option C (Interactive Onboarding Menu):
-"
-            "   bilas-mcp --onboard
-
-"
-            "👉 Option D (Cloud Environment Variables):
-"
-            "   export BILAS_JWT_TOKEN='...'
-"
-            "   export BILAS_OUTLET_ID='...'
-"
-            "=======================================================
-"
+            "\n=======================================================\n"
+            " [Bilas.id MCP] AUTHENTICATION REQUIRED                 \n"
+            "=======================================================\n"
+            "You haven't connected your bilas.id account yet.\n"
+            "Choose your preferred onboarding method:\n\n"
+            "👉 Option A (Local Desktop GUI):\n"
+            "   Run tool 'bilas_launch_browser_login' or command:\n"
+            "   bilas-mcp --browser-login\n\n"
+            "👉 Option B (Cloud / Headless Server Remote Bridge):\n"
+            "   Run tool 'bilas_start_remote_auth_bridge' or command:\n"
+            "   bilas-mcp --remote-bridge\n\n"
+            "👉 Option C (Interactive Onboarding Menu):\n"
+            "   bilas-mcp --onboard\n\n"
+            "👉 Option D (Cloud Environment Variables):\n"
+            "   export BILAS_JWT_TOKEN='...'\n"
+            "   export BILAS_OUTLET_ID='...'\n"
+            "=======================================================\n"
         )
         raise PermissionError(guidance)
 
@@ -390,7 +359,7 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.2.1",
+    version="1.2.2",
     description="Comprehensive Bilas.id Agent Integration Suite with Multi-Modal Onboarding (GUI Browser, Local Auth Bridge, Env Vars)"
 )
 
