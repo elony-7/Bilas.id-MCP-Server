@@ -224,7 +224,7 @@ def start_remote_auth_bridge(port=8765):
                     cookie_str = "; ".join([c.split(";")[0] for c in cookies]) if cookies else ""
                     post_data = urllib.parse.urlencode({
                         "csrfToken": csrf_token,
-                        "callbackUrl": "https://web.bilas.id/beranda",
+                        "callbackUrl": "https://web.bilas.id/masuk",
                         "json": "true"
                     }).encode("utf-8")
 
@@ -337,7 +337,7 @@ def start_remote_auth_bridge(port=8765):
                 }}
                 try {{
                     const href = popup.location.href;
-                    if (href && (href.includes('web.bilas.id') || href.includes('127.0.0.1')) && !href.includes('accounts.google.com') && !href.includes('/google-oauth')) {{
+                    if (href && href.includes('web.bilas.id')) {{
                         let authDataStr = popup.localStorage.getItem('authData');
                         let jwt = '';
                         let outletId = popup.localStorage.getItem('activeOutlet') || popup.localStorage.getItem('outlet_id') || '';
@@ -364,7 +364,7 @@ def start_remote_auth_bridge(port=8765):
                         }}
                     }}
                 }} catch (e) {{}}
-            }}, 800);
+            }}, 500);
         }}
     </script>
 </body>
