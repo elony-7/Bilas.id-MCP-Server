@@ -170,53 +170,63 @@ def login_via_system_default_browser(port=8765):
             html_content = f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>Bilas.id Agent Authentication</title>
+    <title>Bilas.id Agent Onboarding</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }}
-        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 520px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
+        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 540px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
         h2 {{ margin-top: 0; color: #38bdf8; font-size: 22px; }}
         p {{ color: #94a3b8; line-height: 1.5; font-size: 14px; margin-bottom: 20px; }}
-        .btn {{ display: block; width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; text-align: center; margin-bottom: 10px; }}
+        .btn {{ display: block; width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; text-align: center; margin-bottom: 12px; }}
         .btn:hover {{ background: #0369a1; transform: translateY(-1px); }}
         .btn-green {{ background: #16a34a; margin-top: 8px; }}
         .btn-green:hover {{ background: #15803d; }}
+        .status {{ margin-top: 20px; font-size: 14px; font-weight: 500; padding: 14px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; display: none; }}
+        .success {{ color: #4ade80; border-color: #166534; display: block; }}
         .step-box {{ background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 18px; margin-top: 16px; text-align: left; }}
         .step-title {{ font-size: 13px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-bottom: 6px; }}
         .step-desc {{ font-size: 13px; color: #94a3b8; margin: 0 0 12px 0; }}
-        .status {{ margin-top: 20px; font-size: 14px; font-weight: 500; padding: 14px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; display: none; }}
-        .success {{ color: #4ade80; border-color: #166534; display: block; }}
-        .bookmarklet-box {{ margin-top: 14px; padding-top: 12px; border-top: 1px dashed #334155; font-size: 12px; color: #64748b; }}
+        input {{ width: 100%; padding: 12px; background: #1e293b; border: 1px solid #475569; color: white; border-radius: 8px; box-sizing: border-box; margin-top: 8px; font-size: 13px; }}
+        input:focus {{ border-color: #38bdf8; outline: none; }}
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>🔒 Bilas.id Agent Authentication</h2>
-        <p>Connect your AI Agent using your default browser with 100% Google security compliance.</p>
+        <h2>🔒 Bilas.id Agent Onboarding</h2>
+        <p>Log in using your system browser with 100% Google security compliance.</p>
 
         <div class="step-box">
-            <div class="step-title">Step 1: Open Bilas.id Web Login</div>
-            <p class="step-desc">Log in to Bilas.id in a new tab using Google SSO, OTP, or Password.</p>
+            <div class="step-title">Step 1: Log in on Bilas.id</div>
+            <p class="step-desc">Open Bilas.id in a new tab and log in using Google SSO, OTP, or Password.</p>
             <a href="https://web.bilas.id/masuk" target="_blank" class="btn">1. Open Bilas.id Web Login</a>
         </div>
 
         <div class="step-box">
-            <div class="step-title">Step 2: Auto-Callback Session Token</div>
-            <p class="step-desc">Once logged in, click the Auto-Callback button below or use the bookmarklet!</p>
-            
+            <div class="step-title">Step 2: Connect Session Token</div>
+            <p class="step-desc">Click the Auto-Callback helper in your Bilas tab OR paste your JWT token below:</p>
             <a class="btn btn-green" href="javascript:(function(){{var a=JSON.parse(localStorage.getItem('authData')||'{{}}');var t=a.extendedToken||a.token||localStorage.getItem('extendedToken')||localStorage.getItem('token')||sessionStorage.getItem('extendedToken')||sessionStorage.getItem('token');var o=localStorage.getItem('activeOutlet')||localStorage.getItem('outlet_id')||'';if(!t){{alert('⚠️ Please complete your Bilas.id login in this tab first!');return;}}window.location.href='http://127.0.0.1:{port}/callback?jwt='+encodeURIComponent(t)+'&outlet_id='+encodeURIComponent(o);}})();">
-                ⚡ 2. Auto-Callback Token to Agent
+                ⚡ 1-Click Auto-Callback Token
             </a>
-
-            <div class="bookmarklet-box">
-                💡 <em>Tip: You can also drag the green button to your Bookmarks Bar to authorize in 1-click anytime!</em>
-            </div>
+            <input type="text" id="jwtInput" placeholder="Or paste JWT token / authData here..." oninput="handlePaste(this.value)">
         </div>
 
         <div id="statusBox" class="status"></div>
     </div>
 
     <script>
+        function handlePaste(val) {{
+            val = val.trim();
+            if (val.length > 30) {{
+                fetch('/token', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ jwt: val }})
+                }}).then(r => r.json()).then(d => {{
+                    if (d.status === 'success') checkStatus();
+                }});
+            }}
+        }}
+
         function checkStatus() {{
             fetch('/status')
                 .then(r => r.json())
