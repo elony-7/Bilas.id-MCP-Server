@@ -306,6 +306,69 @@ def bilas_search_invoice(query: str) -> str:
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
+
+
+# ---------------------------------------------------------------------------
+# ADDITIONAL FULL PLATFORM TOOLS (v1.1.0)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def bilas_get_financial_categories() -> str:
+    """Retrieve operational financial expense & income categories configured for the outlet."""
+    headers, st = get_valid_headers()
+    outlet_id = st["outlet_id"]
+    url = f"https://apiweb.bilas.id/web/keuangan/kategori?id={outlet_id}"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        res = json.loads(resp.read().decode("utf-8"))
+        return json.dumps(res, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+@mcp.tool()
+def bilas_get_production_summary() -> str:
+    """Get active production pipeline status counters (Antrian, Proses, Siap Ambil, Siap Antar, Konfirmasi, Validasi)."""
+    headers, st = get_valid_headers()
+    outlet_id = st["outlet_id"]
+    url = f"https://apiweb.bilas.id/web/transaksi/reguler/all?id={outlet_id}&page=1&limit=1"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        res = json.loads(resp.read().decode("utf-8"))
+        counters = res.get("result", {}).get("counter", {})
+        return json.dumps({"status": "success", "production_counters": counters}, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+@mcp.tool()
+def bilas_list_machines() -> str:
+    """List all connected IoT smart laundry machines (Washers & Dryers) and their current status."""
+    headers, st = get_valid_headers()
+    outlet_id = st["outlet_id"]
+    url = f"https://apiweb.bilas.id/web/mqtt/machine/list?id={outlet_id}"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        res = json.loads(resp.read().decode("utf-8"))
+        return json.dumps(res, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+@mcp.tool()
+def bilas_get_outlet_profile() -> str:
+    """Retrieve outlet business details, address, location coordinates, and operational configurations."""
+    headers, st = get_valid_headers()
+    outlet_id = st["outlet_id"]
+    url = f"https://apiweb.bilas.id/web/outlet/profil?id={outlet_id}"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        res = json.loads(resp.read().decode("utf-8"))
+        return json.dumps(res, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
 def main():
     if "--browser-login" in sys.argv or "--login" in sys.argv:
         res = trigger_interactive_browser_login()

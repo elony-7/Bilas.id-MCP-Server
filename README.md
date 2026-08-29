@@ -1,19 +1,35 @@
-# Bilas.id MCP Server
+# Bilas.id MCP Server (v1.1.0)
 
-Model Context Protocol (MCP) server for integrating AI Agents with **bilas.id** POS & reporting platform.
+Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 
-## Features
-- **5-Column Cashbox Accounting Reports**: Saldo Awal + Debit - Kredit = Saldo Akhir
-- **Expense & Income Management**: Create, edit, and soft-delete financial entries
-- **Order & Invoice Lookup**: Search by nota number (TRX/...), customer name, or phone number
-- **IoT Machine Control & Metrics**: Connected washers and dryers list
-- **Automated Zero-Password Onboarding**: Intercepts web browser login securely and auto-refreshes tokens every 7 days indefinitely
+## Features & Tool Suite
+
+### 1. 🔐 Auth & Zero-Password Onboarding
+- `bilas_launch_browser_login`: Opens an interactive browser login window (`https://web.bilas.id/login`), captures session JWT token locally to `~/.bilas_id/token_state.json`, and auto-refreshes tokens every 7 days indefinitely.
+
+### 2. 📊 Financials & Cashbox Accounting
+- `bilas_get_cashbox_report`: Computes the exact 5-Column per-cashbox accounting matrix (Saldo Awal + Debit - Kredit = Saldo Akhir).
+- `bilas_get_financial_categories`: Lists all configured operational expense and income categories.
+- `bilas_add_expense`: Records new operational expense (*Pengeluaran*) entries (e.g. *Selisih Kurang*, *Biaya Listrik*).
+- `bilas_delete_expense`: Soft-deletes erroneous financial records by `keuanganId`.
+
+### 3. 🧾 Orders & Production Pipeline
+- `bilas_search_invoice`: Look up customer orders by Nota Number (`TRX/...`), Customer Name, or Phone Number with pagination support.
+- `bilas_get_production_summary`: Fetches real-time production stage counters (*Antrian*, *Proses*, *Siap Ambil*, *Siap Antar*, *Konfirmasi*, *Validasi*).
+
+### 4. 🤖 IoT Smart Machines
+- `bilas_list_machines`: Returns real-time status and pulse metrics for connected washers and dryers.
+
+### 5. ⚙️ Outlet Profile & Settings
+- `bilas_get_outlet_profile`: Fetches business details, address, coordinates, and store configurations.
+
+---
 
 ## Installation & Setup
 
-### 1. Install via pip
+### 1. Install via Pip / Git
 ```bash
-pip install bilas-id-mcp
+pip install git+https://github.com/elony-7/Bilas.id-MCP-Server.git
 playwright install
 ```
 
@@ -33,8 +49,11 @@ claude mcp add bilas-id -- bilas-mcp
 }
 ```
 
-## First Time Use (Unauthenticated User Flow)
-When any tool is called for the first time, the server will detect that no session is active and prompt:
-> 🔒 **Authentication Required**: Run tool `bilas_launch_browser_login` or run `bilas-mcp --browser-login`.
+---
 
-A browser window opens to `https://web.bilas.id/login`. Once you log in via Google, OTP, or Password, the MCP intercepts your session token and stores it **locally** on your machine. Token auto-refreshes every 7 days!
+## Unauthenticated User Onboarding Flow
+
+When any tool is called on a fresh installation, the server automatically detects that no local session exists and prompts:
+> 🔒 **Authentication Required**: Please run tool `bilas_launch_browser_login` or run `bilas-mcp --browser-login`.
+
+Once the user logs in via the browser popup, the session token is saved **locally** to `~/.bilas_id/token_state.json`. Zero session data is hardcoded or leaked into the package!
