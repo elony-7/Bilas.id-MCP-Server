@@ -142,6 +142,19 @@ def login_via_system_default_browser(port=8765):
 
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/callback":
+                query = urllib.parse.parse_qs(parsed.query)
+                jwt = query.get("jwt", [""])[0]
+                outlet = query.get("outlet_id", [""])[0]
+                if jwt:
+                    captured_data["jwt"] = jwt
+                    captured_data["outlet_id"] = outlet
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;background:#0f172a;color:#4ade80;'><h2>✅ Bilas Agent Authorized!</h2><p>Session token transferred to local callback server. You may close this tab.</p><script>setTimeout(() => window.close(), 2000);</script></body></html>".encode("utf-8"))
+                    return
+
             if parsed.path == "/status":
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
