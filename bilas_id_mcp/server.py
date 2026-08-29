@@ -437,19 +437,22 @@ def get_valid_headers():
             "\n=======================================================\n"
             " [Bilas.id MCP] AUTHENTICATION REQUIRED                 \n"
             "=======================================================\n"
-            "You haven't connected your bilas.id account yet.\n"
-            "Choose your preferred onboarding method:\n\n"
-            "👉 Option A (Local Desktop GUI):\n"
-            "   Run tool 'bilas_launch_browser_login' or command:\n"
-            "   bilas-mcp --browser-login\n\n"
-            "👉 Option B (Direct Google SSO Login):\n"
-            "   Run tool 'bilas_start_remote_auth_bridge' or command:\n"
-            "   bilas-mcp --google-sso\n\n"
-            "👉 Option C (Interactive Onboarding Menu):\n"
+            "No valid session token found in ~/.bilas_id/token_state.json.\n"
+            "AI Agent: choose ONE of these methods to authenticate:\n\n"
+            "👉 RECOMMENDED FOR AGENTS — Direct CLI Token:\n"
+            "   bilas-mcp --token <FULL_JWT_TOKEN>\n"
+            "   (outlet_id auto-resolved; DO NOT truncate the JWT!)\n\n"
+            "👉 With explicit outlet ID:\n"
+            "   bilas-mcp --token <FULL_JWT_TOKEN> --outlet <OUTLET_ID>\n\n"
+            "👉 Via MCP tool call:\n"
+            "   bilas_set_manual_credentials(jwt_token=..., outlet_id=...)\n\n"
+            "👉 Interactive browser onboarding (human user):\n"
             "   bilas-mcp --onboard\n\n"
-            "👉 Option D (Cloud Environment Variables):\n"
-            "   export BILAS_JWT_TOKEN='...'\n"
-            "   export BILAS_OUTLET_ID='...'\n"
+            "IMPORTANT FOR AI AGENTS:\n"
+            "  - NEVER save tokens to .txt, .env, or any local file manually\n"
+            "  - NEVER truncate JWT tokens with ... or ellipsis\n"
+            "  - All tools auto-read credentials from ~/.bilas_id/token_state.json\n"
+            "  - Token refresh is automatic — no manual refresh needed\n"
             "=======================================================\n"
         )
         raise PermissionError(guidance)
@@ -469,7 +472,17 @@ from mcp.server.mcpserver import MCPServer
 mcp = MCPServer(
     name="bilas-id-mcp",
     version="1.5.0",
-    description="Comprehensive Bilas.id Agent Integration Suite with Automated 1-Click OAuth Onboarding"
+    description=(
+        "Bilas.id MCP Server v1.5.0 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
+        "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
+        "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
+        "Token refresh is automatic. Outlet ID is auto-resolved if not provided.\n"
+        "Available CLI commands: bilas-mcp --token <JWT> [--outlet <ID>] | --onboard | --browser-login | --remote-bridge\n"
+        "Read-only tools: bilas_get_outlet_profile, bilas_get_cashbox_report, bilas_get_financial_categories,\n"
+        "  bilas_search_invoice, bilas_get_production_summary, bilas_list_machines\n"
+        "Write tools (use with care): bilas_add_expense, bilas_delete_expense"
+    )
 )
 
 # ---------------------------------------------------------------------------
@@ -478,17 +491,33 @@ mcp = MCPServer(
 
 @mcp.tool()
 def bilas_launch_browser_login() -> str:
-    """Launch interactive Playwright GUI browser login window for local machines."""
-    return login_via_playwright_gui()
+    """Open Bilas.id login page in the system default browser with a local HTTP bridge on 127.0.0.1:8765.
+    The user logs in via their normal browser (Google OAuth compatible), then uses the provided
+    bookmarklet to transfer the session token to this MCP server.
+    Token is saved to ~/.bilas_id/token_state.json. DO NOT save tokens to any other file.
+    All other tools auto-read credentials from that state file.
+    Equivalent CLI: bilas-mcp --browser-login"""
+    return login_via_system_default_browser()
 
 @mcp.tool()
 def bilas_start_remote_auth_bridge() -> str:
-    """Launch Direct Google SSO login — opens browser at Google's account picker for Bilas.id and captures the session token automatically."""
+    """Open Bilas.id login in the system default browser with a local HTTP bridge on 127.0.0.1:8765.
+    After the user logs in, they click the bookmarklet to transfer the JWT session token.
+    Token and outlet_id are saved to ~/.bilas_id/token_state.json automatically.
+    DO NOT save tokens to any other file. All MCP tools auto-read from that state file.
+    Equivalent CLI: bilas-mcp --remote-bridge"""
     return login_via_system_default_browser()
 
 @mcp.tool()
 def bilas_set_manual_credentials(jwt_token: str, outlet_id: str) -> str:
-    """Manually set JWT token and Outlet ID directly into local configuration state."""
+    """Save a JWT token and optional Outlet ID into ~/.bilas_id/token_state.json.
+    If outlet_id is omitted or empty, the server auto-resolves it via the user's Bilas.id profile API.
+    DO NOT write tokens to .txt, .env, or any other file manually. NEVER truncate JWT tokens with ellipsis.
+    Equivalent CLI: bilas-mcp --token <FULL_JWT_TOKEN> [--outlet <outlet_id>]
+
+    Args:
+        jwt_token: The COMPLETE JWT string from Bilas.id (e.g. eyJhbGciOiJIUzI1NiIs...). Must NOT be truncated.
+        outlet_id: Firestore outlet document ID (e.g. 2cvnOPoOgK9uZBQCc40c). Optional, auto-resolved if empty."""
     return save_manual_credentials(jwt_token, outlet_id)
 
 # ---------------------------------------------------------------------------
@@ -497,7 +526,16 @@ def bilas_set_manual_credentials(jwt_token: str, outlet_id: str) -> str:
 
 @mcp.tool()
 def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str, base_opening_balances: dict = None) -> str:
-    """Computes exact per-cashbox accounting table (Saldo Awal + Debit - Kredit = Saldo Akhir)."""
+    """Compute the 5-column per-cashbox accounting matrix for a date range.
+    Returns rows: cashbox, saldo_awal (opening), debit, kredit, saldo_akhir (closing).
+    Formula: Saldo Akhir = Saldo Awal + Debit - Kredit.
+    Combines Arus Kas (cash flow) and Pemindahan Saldo (balance transfers).
+    READ-ONLY. Credentials auto-loaded from ~/.bilas_id/token_state.json.
+
+    Args:
+        tgl_awal: Start date YYYY/MM/DD (e.g. "2026/08/01")
+        tgl_akhir: End date YYYY/MM/DD (e.g. "2026/08/30")
+        base_opening_balances: Optional dict of cashbox opening balances (default: all zero)"""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
 
@@ -539,7 +577,9 @@ def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str, base_opening_balance
 
 @mcp.tool()
 def bilas_get_financial_categories() -> str:
-    """Retrieve operational financial expense & income categories configured for the outlet."""
+    """List all financial categories (pengeluaran/pemasukan) configured for this outlet.
+    Returns category names, types, and active status. Use these exact category names when calling bilas_add_expense.
+    READ-ONLY. Credentials auto-loaded from ~/.bilas_id/token_state.json."""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
     url = f"https://apiweb.bilas.id/web/keuangan/kategori?id={outlet_id}"
@@ -553,7 +593,16 @@ def bilas_get_financial_categories() -> str:
 
 @mcp.tool()
 def bilas_add_expense(cashbox: str, category: str, amount: int, description: str, date_mm_dd_yyyy: str) -> str:
-    """Record an operational expense (Pengeluaran) entry."""
+    """Record a new operational expense (Pengeluaran) in the outlet financial ledger.
+    WRITE OPERATION — use with care. Verify category names via bilas_get_financial_categories first.
+    Credentials auto-loaded from ~/.bilas_id/token_state.json.
+
+    Args:
+        cashbox: Payment method exactly as configured (e.g. "Tunai", "BCA", "QRIS", "Dana")
+        category: Expense category exactly as returned by bilas_get_financial_categories (e.g. "Biaya Listrik")
+        amount: Amount in Rupiah as integer (e.g. 50000 for Rp50,000)
+        description: Human-readable note (e.g. "Bayar listrik bulan Agustus")
+        date_mm_dd_yyyy: Transaction date in MM/DD/YYYY format (e.g. "08/30/2026")"""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
     user_id = st.get("user_id") or jwt_decode_payload(st.get("jwt")).get("id")
@@ -583,7 +632,13 @@ def bilas_add_expense(cashbox: str, category: str, amount: int, description: str
 
 @mcp.tool()
 def bilas_delete_expense(keuangan_id: str, date_mm_dd_yyyy: str) -> str:
-    """Soft-delete an expense or income entry by its keuanganId."""
+    """Soft-delete a financial record by its keuanganId.
+    WRITE OPERATION — use with care. The keuanganId is found in bilas_add_expense responses or the web dashboard.
+    Credentials auto-loaded from ~/.bilas_id/token_state.json.
+
+    Args:
+        keuangan_id: Firestore document ID of the financial entry to delete
+        date_mm_dd_yyyy: Date of the entry in MM/DD/YYYY format"""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
     payload = {
@@ -608,7 +663,15 @@ def bilas_delete_expense(keuangan_id: str, date_mm_dd_yyyy: str) -> str:
 
 @mcp.tool()
 def bilas_search_invoice(query: str = "", page: int = 1, limit: int = 20) -> str:
-    """Lookup transactions or customer history by nota number (TRX/...), customer name, or phone number."""
+    """Search customer orders/invoices by nota number, customer name, or phone number.
+    Returns: no_nota (e.g. TRX/260829/005), nama_pelanggan, status_pengerjaan (Antrian/Proses/Selesai),
+    total_tagihan, status_pembayaran, parfum, and timestamps. Pass empty query for recent orders.
+    READ-ONLY. Credentials auto-loaded from ~/.bilas_id/token_state.json.
+
+    Args:
+        query: Search term — nota number (TRX/...), customer name, or phone. Empty string = all recent.
+        page: Page number for pagination (default: 1)
+        limit: Results per page (default: 20, max recommended: 50)"""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
     q = urllib.parse.quote(query, safe="")
@@ -623,7 +686,10 @@ def bilas_search_invoice(query: str = "", page: int = 1, limit: int = 20) -> str
 
 @mcp.tool()
 def bilas_get_production_summary() -> str:
-    """Get active production pipeline status counters (Antrian, Proses, Siap Ambil, Siap Antar, Konfirmasi, Validasi)."""
+    """Get real-time production pipeline stage counters for the outlet.
+    Returns counts: antrian (queued), proses (in progress), siap ambil (ready pickup),
+    siap antar (ready delivery), konfirmasi, validasi, penjemputan.
+    READ-ONLY. Credentials auto-loaded from ~/.bilas_id/token_state.json."""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
     url = f"https://apiweb.bilas.id/web/transaksi/reguler/all?id={outlet_id}&page=1&limit=1"
@@ -642,7 +708,9 @@ def bilas_get_production_summary() -> str:
 
 @mcp.tool()
 def bilas_list_machines() -> str:
-    """List all connected IoT smart laundry machines (Washers & Dryers) and their current status."""
+    """List all IoT-connected laundry machines (washers and dryers) registered to this outlet.
+    Returns machine IDs, names, product types, pulse counters, and status timestamps.
+    READ-ONLY. Credentials auto-loaded from ~/.bilas_id/token_state.json."""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
     url = f"https://apiweb.bilas.id/web/mqtt/machine/list?id={outlet_id}"
@@ -660,7 +728,9 @@ def bilas_list_machines() -> str:
 
 @mcp.tool()
 def bilas_get_outlet_profile() -> str:
-    """Retrieve outlet business details, address, location coordinates, and operational configurations."""
+    """Retrieve outlet business profile: name, address, city, province, phone, operating hours (jadwal),
+    delivery tariffs (ongkir_tarif), printer/nota settings, subscription status, and location coordinates.
+    READ-ONLY. Credentials auto-loaded from ~/.bilas_id/token_state.json."""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
     url = f"https://apiweb.bilas.id/web/outlet/profil?id={outlet_id}"
@@ -673,6 +743,41 @@ def bilas_get_outlet_profile() -> str:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
 def main():
+    # Show help
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print(
+            "\n  Bilas.id MCP Server v1.5.0\n"
+            "  ─────────────────────────────────────────────────────\n"
+            "  Usage:\n"
+            "    bilas-mcp                         Start MCP server (stdio transport)\n"
+            "    bilas-mcp --token <JWT>            Save JWT token (outlet auto-resolved)\n"
+            "    bilas-mcp --token <JWT> --outlet <ID>  Save JWT + explicit outlet ID\n"
+            "    bilas-mcp --onboard                Interactive onboarding menu\n"
+            "    bilas-mcp --browser-login          Open system browser + bookmarklet bridge\n"
+            "    bilas-mcp --remote-bridge          Same as --browser-login\n"
+            "    bilas-mcp --help                   Show this help\n\n"
+            "  Credentials:\n"
+            "    Saved to:  ~/.bilas_id/token_state.json\n"
+            "    All tools auto-read from that file. Token refresh is automatic.\n"
+            "    NEVER save tokens to .txt/.env or truncate JWT strings.\n\n"
+            "  Read-only tools:\n"
+            "    bilas_get_outlet_profile           Outlet business details\n"
+            "    bilas_get_cashbox_report            5-column cashbox accounting matrix\n"
+            "    bilas_get_financial_categories     Expense/income category list\n"
+            "    bilas_search_invoice               Search orders by nota/name/phone\n"
+            "    bilas_get_production_summary       Production pipeline stage counters\n"
+            "    bilas_list_machines                IoT washer/dryer status\n\n"
+            "  Write tools (use with care):\n"
+            "    bilas_add_expense                  Record new expense entry\n"
+            "    bilas_delete_expense               Soft-delete a financial entry\n\n"
+            "  Auth tools:\n"
+            "    bilas_set_manual_credentials       Save JWT + outlet via MCP tool call\n"
+            "    bilas_launch_browser_login         Browser + bookmarklet bridge\n"
+            "    bilas_start_remote_auth_bridge     Same as above\n"
+            "  ─────────────────────────────────────────────────────\n"
+        )
+        return
+
     # Handle direct CLI token passing: bilas-mcp --token <jwt_token> [--outlet <outlet_id>]
     if "--token" in sys.argv:
         try:
