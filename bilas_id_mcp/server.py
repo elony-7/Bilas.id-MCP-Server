@@ -368,20 +368,39 @@ def login_via_system_default_browser(port=8765):
             "status": "error",
             "message": "❌ Default browser authentication timed out."
         }, indent=2)
-def save_manual_credentials(jwt_token: str, outlet_id: str):
-    payload = jwt_decode_payload(jwt_token)
+def save_manual_credentials(jwt_token: str, outlet_id: str = ""):
+    jwt_clean = jwt_token.strip()
+    payload = jwt_decode_payload(jwt_clean)
+    out_clean = outlet_id.strip() if outlet_id else ""
+    
     st = {
-        "jwt": jwt_token.strip(),
-        "outlet_id": outlet_id.strip(),
+        "jwt": jwt_clean,
+        "outlet_id": out_clean,
         "user_id": payload.get("id"),
         "exp": payload.get("exp"),
         "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%S")
     }
     save_state(st)
+    
+    # If no outlet_id provided, attempt auto-resolution via profile API
+    if not st.get("outlet_id"):
+        try:
+            headers = dict(APP_TOKENS)
+            headers["Authorization"] = "Bearer " + jwt_clean
+            req = urllib.request.Request("https://apiweb.bilas.id/web/user/auth/profil", headers=headers, method="GET")
+            resp = urllib.request.urlopen(req, timeout=10)
+            res = json.loads(resp.read().decode("utf-8"))
+            outlets = res.get("result", {}).get("outletList", [])
+            if outlets:
+                st["outlet_id"] = outlets[0]["id"]
+                save_state(st)
+        except Exception:
+            pass
+
     return json.dumps({
         "status": "success",
         "message": "✅ Credentials saved successfully to ~/.bilas_id/token_state.json!",
-        "outlet_id": st["outlet_id"],
+        "outlet_id": st.get("outlet_id", ""),
         "expires_at": st["exp"]
     }, indent=2)
 
@@ -654,8 +673,29 @@ def bilas_get_outlet_profile() -> str:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
 def main():
+    # Handle direct CLI token passing: bilas-mcp --token <jwt_token> [--outlet <outlet_id>]
+    if "--token" in sys.argv:
+        try:
+            idx = sys.argv.index("--token")
+            jwt_val = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else ""
+            outlet_val = ""
+            if "--outlet" in sys.argv:
+                oidx = sys.argv.index("--outlet")
+                outlet_val = sys.argv[oidx + 1] if oidx + 1 < len(sys.argv) else ""
+            
+            if not jwt_val:
+                print(json.dumps({"status": "error", "message": "❌ Missing token value after --token"}, indent=2))
+                return
+            
+            res = save_manual_credentials(jwt_val, outlet_val)
+            print(res)
+            return
+        except Exception as e:
+            print(json.dumps({"status": "error", "message": f"❌ Failed to parse CLI flags: {e}"}, indent=2))
+            return
+
     if "--browser-login" in sys.argv:
-        res = login_via_playwright_gui()
+        res = login_via_system_default_browser()
         print(res)
         return
     elif "--remote-bridge" in sys.argv or "--google-sso" in sys.argv:
