@@ -323,7 +323,7 @@ def interactive_onboarding_menu():
     if choice == "1":
         return login_via_playwright_gui()
     elif choice == "2":
-        return login_via_google_sso_popup()
+        return login_via_system_default_browser()
     elif choice == "3":
         jwt = input("Paste Extended JWT Token: ").strip()
         outlet = input("Enter Outlet ID: ").strip()
@@ -385,7 +385,7 @@ def bilas_launch_browser_login() -> str:
 @mcp.tool()
 def bilas_start_remote_auth_bridge() -> str:
     """Launch Direct Google SSO login — opens browser at Google's account picker for Bilas.id and captures the session token automatically."""
-    return login_via_google_sso_popup()
+    return login_via_system_default_browser()
 
 @mcp.tool()
 def bilas_set_manual_credentials(jwt_token: str, outlet_id: str) -> str:
@@ -579,7 +579,7 @@ def main():
         print(res)
         return
     elif "--remote-bridge" in sys.argv or "--google-sso" in sys.argv:
-        res = login_via_google_sso_popup()
+        res = login_via_system_default_browser()
         print(res)
         return
     elif "--login" in sys.argv or "--onboard" in sys.argv:
