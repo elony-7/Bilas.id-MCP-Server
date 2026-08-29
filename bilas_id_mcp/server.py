@@ -237,7 +237,7 @@ def login_via_system_default_browser(port=8765):
                     return;
                 }
             } catch (e) {}
-            alert("👉 Token not detected yet. Make sure you are logged in inside the opened Bilas window!");
+            alert("👉 Browser Security Notice: Cross-origin access between 127.0.0.1 and web.bilas.id was blocked by browser security (SOP). Please drag the green Bookmark button below to your Bookmarks Bar and click it on web.bilas.id, or paste your JWT token into the box below!");
         }
 
         function startPoller() {
