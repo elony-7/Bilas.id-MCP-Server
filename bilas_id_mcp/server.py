@@ -196,17 +196,15 @@ def login_via_system_default_browser(port=8765):
         <p>Log in using your system browser with 100% Google security compliance.</p>
 
         <div class="step-box">
-            <div class="step-title">Step 1: Log in on Bilas.id</div>
-            <p class="step-desc">Open Bilas.id in a new tab and log in using Google SSO, OTP, or Password.</p>
-            <a href="https://web.bilas.id/masuk" target="_blank" class="btn">1. Open Bilas.id Web Login</a>
+            <div class="step-title">Step 1: Open Bilas Web Login Window</div>
+            <p class="step-desc">Click below to open Bilas.id in a dedicated browser window to log in safely via Google SSO or Password.</p>
+            <button class="btn" onclick="openBilasWindow()">🌐 1. Open Bilas.id Login Window</button>
         </div>
 
         <div class="step-box">
-            <div class="step-title">Step 2: Connect Session Token</div>
-            <p class="step-desc">Click the Auto-Callback helper in your Bilas tab OR paste your JWT token below:</p>
-            <a class="btn btn-green" href="javascript:(function(){{var a=JSON.parse(localStorage.getItem('authData')||'{{}}');var t=a.extendedToken||a.token||localStorage.getItem('extendedToken')||localStorage.getItem('token')||sessionStorage.getItem('extendedToken')||sessionStorage.getItem('token');var o=localStorage.getItem('activeOutlet')||localStorage.getItem('outlet_id')||'';if(!t){{alert('⚠️ Please complete your Bilas.id login in this tab first!');return;}}window.location.href='http://127.0.0.1:{port}/callback?jwt='+encodeURIComponent(t)+'&outlet_id='+encodeURIComponent(o);}})();">
-                ⚡ 1-Click Auto-Callback Token
-            </a>
+            <div class="step-title">Step 2: Auto-Grab Token Across Window</div>
+            <p class="step-desc">Once logged in, click below to automatically pull the token from the Bilas window!</p>
+            <button class="btn btn-green" onclick="grabTokenFromBilasWindow()">⚡ 2. Auto-Grab Token & Authorize Agent</button>
             <input type="text" id="jwtInput" placeholder="Or paste JWT token / authData here..." oninput="handlePaste(this.value)">
         </div>
 
@@ -214,16 +212,71 @@ def login_via_system_default_browser(port=8765):
     </div>
 
     <script>
+        let bilasWin = null;
+
+        function openBilasWindow() {{
+            bilasWin = window.open('https://web.bilas.id/masuk', 'BilasAuthTab', 'width=600,height=750');
+            startAutoPoller();
+        }}
+
+        function grabTokenFromBilasWindow() {{
+            if (!bilasWin || bilasWin.closed) {{
+                bilasWin = window.open('https://web.bilas.id/masuk', 'BilasAuthTab', 'width=600,height=750');
+                alert('👉 Bilas login window opened! Please log in there, then click this button again.');
+                return;
+            }}
+            try {{
+                let storage = bilasWin.localStorage;
+                let authStr = storage.getItem('authData') || '{{}}';
+                let authObj = JSON.parse(authStr);
+                let token = authObj.extendedToken || authObj.token || storage.getItem('extendedToken') || storage.getItem('token');
+                let outlet = storage.getItem('activeOutlet') || storage.getItem('outlet_id') || '';
+
+                if (token) {{
+                    sendTokenToLocalServer(token, outlet);
+                    return;
+                }}
+            }} catch (e) {{}}
+
+            alert('👉 Please complete your login in the opened Bilas window first! Once logged in, click this button again.');
+        }}
+
+        function sendTokenToLocalServer(jwt, outlet) {{
+            fetch('/token', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{ jwt: jwt, outlet_id: outlet }})
+            }}).then(r => r.json()).then(d => {{
+                if (d.status === 'success') {{
+                    checkStatus();
+                    if (bilasWin && !bilasWin.closed) bilasWin.close();
+                }}
+            }}).catch(() => {{}});
+        }}
+
+        function startAutoPoller() {{
+            let interval = setInterval(() => {{
+                if (!bilasWin || bilasWin.closed) {{
+                    clearInterval(interval);
+                    return;
+                }}
+                try {{
+                    let storage = bilasWin.localStorage;
+                    let authStr = storage.getItem('authData') || '{{}}';
+                    let authObj = JSON.parse(authStr);
+                    let token = authObj.extendedToken || authObj.token || storage.getItem('extendedToken') || storage.getItem('token');
+                    if (token) {{
+                        sendTokenToLocalServer(token, storage.getItem('activeOutlet') || '');
+                        clearInterval(interval);
+                    }}
+                }} catch (e) {{}}
+            }}, 1500);
+        }}
+
         function handlePaste(val) {{
             val = val.trim();
             if (val.length > 30) {{
-                fetch('/token', {{
-                    method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ jwt: val }})
-                }}).then(r => r.json()).then(d => {{
-                    if (d.status === 'success') checkStatus();
-                }});
+                sendTokenToLocalServer(val, '');
             }}
         }}
 
