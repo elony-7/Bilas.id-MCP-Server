@@ -212,6 +212,48 @@ def start_remote_auth_bridge(port=8765):
 
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
+            if parsed.path == "/google-oauth":
+                try:
+                    # Fetch NextAuth CSRF token & cookies from web.bilas.id
+                    req_csrf = urllib.request.Request("https://web.bilas.id/api/auth/csrf", headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req_csrf, timeout=10) as resp:
+                        cookies = resp.headers.get_all("Set-Cookie")
+                        csrf_data = json.loads(resp.read().decode("utf-8"))
+                        csrf_token = csrf_data.get("csrfToken")
+
+                    cookie_str = "; ".join([c.split(";")[0] for c in cookies]) if cookies else ""
+                    post_data = urllib.parse.urlencode({
+                        "csrfToken": csrf_token,
+                        "callbackUrl": "https://web.bilas.id/beranda",
+                        "json": "true"
+                    }).encode("utf-8")
+
+                    req_signin = urllib.request.Request(
+                        "https://web.bilas.id/api/auth/signin/google",
+                        data=post_data,
+                        headers={
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            "Cookie": cookie_str,
+                            "User-Agent": "Mozilla/5.0"
+                        },
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(req_signin, timeout=10) as resp_signin:
+                        signin_res = json.loads(resp_signin.read().decode("utf-8"))
+                        google_url = signin_res.get("url")
+                        if google_url:
+                            self.send_response(302)
+                            self.send_header("Location", google_url)
+                            self.end_headers()
+                            return
+                except Exception as e:
+                    sys.stderr.write(f"[Bilas OAuth Bridge] OAuth redirect fetch error: {e}\n")
+
+                self.send_response(302)
+                self.send_header("Location", "https://web.bilas.id/masuk")
+                self.end_headers()
+                return
+
             if parsed.path == "/status":
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -240,41 +282,34 @@ def start_remote_auth_bridge(port=8765):
             html_content = f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>Bilas.id Automated OAuth Bridge</title>
+    <title>Bilas.id Direct Google OAuth Bridge</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }}
-        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 540px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
+        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 520px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
         h2 {{ margin-top: 0; color: #38bdf8; font-size: 22px; }}
         p {{ color: #94a3b8; line-height: 1.5; font-size: 14px; margin-bottom: 24px; }}
-        .btn {{ display: block; width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; text-align: center; border: none; }}
-        .btn:hover {{ background: #0369a1; transform: translateY(-1px); }}
+        .btn {{ display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 14px; background: #ffffff; color: #1f2937; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; border: 1px solid #e5e7eb; }}
+        .btn:hover {{ background: #f9fafb; transform: translateY(-1px); }}
         .step-box {{ background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 18px; margin-top: 16px; text-align: left; }}
-        .step-title {{ font-size: 13px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }}
-        .step-desc {{ font-size: 13px; color: #94a3b8; margin: 0 0 12px 0; }}
-        .bm-drag {{ display: inline-block; background: #16a34a; color: white; padding: 10px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: grab; text-decoration: none; margin: 6px 0; border: 1px dashed #4ade80; }}
+        .step-title {{ font-size: 13px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-bottom: 6px; }}
+        .step-desc {{ font-size: 13px; color: #94a3b8; margin: 0 0 14px 0; }}
         .status {{ margin-top: 20px; font-size: 14px; font-weight: 500; padding: 12px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; display: none; }}
         .success {{ color: #4ade80; border-color: #166534; display: block; }}
-        .badge {{ background: #0284c7; color: white; border-radius: 9999px; width: 20px; height: 20px; display: inline-flex; justify-content: center; align-items: center; font-size: 11px; }}
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>🔒 Bilas.id Automated OAuth Bridge</h2>
-        <p>Connect your AI Agent to Bilas.id seamlessly with zero manual token typing.</p>
+        <h2>🔒 Bilas.id Direct OAuth Bridge</h2>
+        <p>Authorize your Bilas.id AI Agent directly using Google Single Sign-On (SSO).</p>
 
         <div class="step-box">
-            <div class="step-title"><span class="badge">1</span> Option A: 1-Click Auto OAuth Popup (Recommended)</div>
-            <p class="step-desc">Click below to open Bilas.id in a popup window. Log in, and your session token will automatically transfer back here!</p>
-            <button onclick="openOAuthPopup()" class="btn">⚡ Launch 1-Click Bilas.id Login Popup</button>
-        </div>
-
-        <div class="step-box">
-            <div class="step-title"><span class="badge">2</span> Option B: 1-Click Bookmarklet (Alternative)</div>
-            <p class="step-desc">Drag the green button to your browser bookmarks bar. Open <a href="https://web.bilas.id/masuk" target="_blank" style="color:#38bdf8;">web.bilas.id</a>, log in, then click the bookmark!</p>
-            <a class="bm-drag" href="javascript:(function(){{var a=JSON.parse(localStorage.getItem('authData')||'{{}}');var t=a.extendedToken||a.token||localStorage.getItem('extendedToken')||localStorage.getItem('token')||sessionStorage.getItem('extendedToken')||sessionStorage.getItem('token');var o=localStorage.getItem('activeOutlet')||localStorage.getItem('outlet_id')||'';if(!t){{alert('⚠️ Please log in to web.bilas.id in this tab first!');return;}}fetch('http://127.0.0.1:{port}/token',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{jwt:t,outlet_id:o}})}}).then(r=>r.json()).then(d=>alert('✅ Bilas.id Agent Authorized Successfully!')).catch(e=>alert('Error transferring token: '+e));}})();">
-                📌 Drag Me to Bookmarks Bar: Bilas Authorizer
-            </a>
+            <div class="step-title">Direct Google SSO Login</div>
+            <p class="step-desc">Click below to open the official Google OAuth sign-in window directly. Once you pick your account, your Bilas session automatically transfers here!</p>
+            <button onclick="launchGoogleOAuth()" class="btn">
+                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+                Sign in with Google OAuth
+            </button>
         </div>
 
         <div id="statusBox" class="status"></div>
@@ -287,14 +322,14 @@ def start_remote_auth_bridge(port=8765):
                 .then(d => {{
                     if (d.authorized) {{
                         document.getElementById('statusBox').className = 'status success';
-                        document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized!</strong> Session token captured successfully. You may close this window.';
+                        document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized Successfully!</strong> You may close this window.';
                     }}
                 }}).catch(() => {{}});
         }}
         setInterval(checkStatus, 1500);
 
-        function openOAuthPopup() {{
-            const popup = window.open('https://web.bilas.id/masuk', 'BilasOAuth', 'width=500,height=700');
+        function launchGoogleOAuth() {{
+            const popup = window.open('/google-oauth', 'BilasGoogleOAuth', 'width=520,height=680');
             const timer = setInterval(() => {{
                 if (!popup || popup.closed) {{
                     clearInterval(timer);
@@ -302,7 +337,7 @@ def start_remote_auth_bridge(port=8765):
                 }}
                 try {{
                     const href = popup.location.href;
-                    if (href && !href.includes('/masuk') && !href.includes('/login') && !href.includes('/verifikasi') && !href.includes('accounts.google.com')) {{
+                    if (href && (href.includes('web.bilas.id') || href.includes('127.0.0.1')) && !href.includes('accounts.google.com') && !href.includes('/google-oauth')) {{
                         let authDataStr = popup.localStorage.getItem('authData');
                         let jwt = '';
                         let outletId = popup.localStorage.getItem('activeOutlet') || popup.localStorage.getItem('outlet_id') || '';
@@ -324,7 +359,7 @@ def start_remote_auth_bridge(port=8765):
                                 popup.close();
                                 clearInterval(timer);
                                 document.getElementById('statusBox').className = 'status success';
-                                document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized!</strong> Token transferred successfully.';
+                                document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized!</strong> Session captured via Google SSO.';
                             }});
                         }}
                     }}
@@ -385,7 +420,7 @@ def start_remote_auth_bridge(port=8765):
         save_state(st)
         return json.dumps({
             "status": "success",
-            "message": "✅ 1-Click OAuth Authorization Successful! Session state saved to ~/.bilas_id/",
+            "message": "✅ Direct Google OAuth Authorization Successful! Session state saved to ~/.bilas_id/",
             "outlet_id": st["outlet_id"]
         }, indent=2)
     else:
