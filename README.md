@@ -1,31 +1,20 @@
-# Bilas.id MCP Server (v1.3.0)
+# Bilas.id MCP Server (v1.4.0)
 
 Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 
 ---
 
-## 🚀 1-Click OAuth & Multi-Modal Onboarding Suite
+## 🚀 2-Step Automated OAuth Bridge
 
 The MCP server guarantees **100% session state isolation**. Zero hardcoded credentials or JWT tokens exist in the codebase. User authentication is stored exclusively in `~/.bilas_id/token_state.json` on the user's local machine.
 
-Users and Agents have 4 distinct onboarding options:
+### 🌐 How the 2-Step OAuth Bridge Works (`--remote-bridge` / `bilas_start_remote_auth_bridge`)
 
-### 1. ⚡ 1-Click OAuth Remote Auth Bridge (`--remote-bridge`)
-- Launches an interactive 1-Click OAuth Authorization server at `http://127.0.0.1:8765`.
-- **Popup SSO Flow:** Clicking **"🔑 Connect & Authorize Bilas.id"** opens the Google / Bilas.id OAuth login popup window.
-- **1-Click Auto-Grab Bookmarklet:** Includes a zero-paste bookmarklet button. Once logged in, clicking the bookmarklet instantly transfers your session token into the AI Agent's configuration file!
-- **Automatic Outlet Resolution:** Once authorized, the server automatically queries the user's outlet business profile and extracts the active `outlet_id`.
+When running on headless cloud servers or local machines without terminal popups:
 
-### 2. 🖥️ Interactive Playwright GUI Browser (`--browser-login`)
-- Launches a local Playwright Chromium window opening `https://web.bilas.id/login`.
-- Intercepts login response tokens and saves session state locally.
-- **Best for:** Local desktop AI agents (Claude Code CLI, Claude Desktop).
-
-### 3. 🔑 Interactive Onboarding Menu (`--onboard`)
-- Interactive CLI prompt presenting all authentication options upon running `bilas-mcp --onboard`.
-
-### 4. 💻 Cloud Environment Variables
-- Set `BILAS_JWT_TOKEN` and `BILAS_OUTLET_ID` in your server environment for headless automation.
+1. **Step 1 (Login)**: Click **"1. Open Bilas.id Login Web Page"** to log in using Google SSO or password on the official Bilas web app.
+2. **Step 2 (Instant Auto-Grab)**: Click **"⚡ 2. Auto-Grab Token & Authorize Agent"** (or use the 1-click bookmarklet). The portal reads `extendedToken` directly from browser storage and securely posts it to `127.0.0.1:8765`.
+3. **Auto-Outlet Resolution**: The server automatically queries the user's outlet business profile to fetch their active `outlet_id` without manual entry.
 
 ---
 
@@ -33,7 +22,7 @@ Users and Agents have 4 distinct onboarding options:
 
 ### 1. 🔐 Auth & Onboarding Tools
 - `bilas_launch_browser_login`: Opens interactive Playwright GUI browser window.
-- `bilas_start_remote_auth_bridge`: Starts 1-Click OAuth Auth Bridge HTTP server on `127.0.0.1:8765`.
+- `bilas_start_remote_auth_bridge`: Starts 2-Step Automated OAuth Bridge HTTP server on `127.0.0.1:8765`.
 - `bilas_set_manual_credentials`: Manually saves JWT token and Outlet ID.
 
 ### 2. 📊 Financials & Cashbox Accounting
