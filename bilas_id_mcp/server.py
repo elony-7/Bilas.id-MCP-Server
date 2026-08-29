@@ -30,6 +30,7 @@ USER_HOME = Path.home()
 CONFIG_DIR = USER_HOME / ".bilas_id"
 STATE_FILE = CONFIG_DIR / "token_state.json"
 
+# Default fallbacks
 APP_TOKENS = {
     "x-access-token": "sjgyfne73592643gedudney3628465hgrdt",
     "x-access-web-token": "UD1P6jZ0XKErPm5hQ4dKSXu5MQv6h8oOGeT78CVpXXAxC7H4LrtEZtj2BnwHKKcnuLfRtZYvne3Qlb2aUVg",
@@ -212,7 +213,7 @@ def login_via_system_default_browser(port=8765):
         <div class="step-box">
             <div class="step-title">Step 2: 1-Click Bookmarklet Transfer</div>
             <p class="step-desc">Drag this green button to your browser Bookmarks Bar. After logging into <code>web.bilas.id</code>, click the bookmarklet to send your session token to the agent!</p>
-            <a class="btn btn-green" style="display:inline-block; cursor:grab;" href="javascript:(function(){try{let a=localStorage.getItem('authData')||'{}';let b=JSON.parse(a);let t=b.extendedToken||b.token||localStorage.getItem('extendedToken')||localStorage.getItem('token')||'';let o=localStorage.getItem('activeOutlet')||'';if(t){if(navigator.clipboard){navigator.clipboard.writeText(t).catch(()=>{});}fetch('http://127.0.0.1:8765/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jwt:t,outlet_id:o})}).then(r=>r.json()).then(d=>{alert('✅ Bilas.id Session Token Transferred & Copied to Clipboard!');}).catch(e=>{alert('✅ Token copied to clipboard! (Failed to send to 127.0.0.1:8765)');});}else{alert('❌ No Bilas.id session token found in this tab. Please log in first!');}}catch(e){alert('Error: '+e.message);}})();">🔖 Drag to Bookmarks Bar: Transfer Token to MCP</a>
+            <a class="btn btn-green" style="display:inline-block; cursor:grab;" href="javascript:(function(){try{let a=localStorage.getItem('authData')||'{}';let b=JSON.parse(a);let t=b.extendedToken||b.token||localStorage.getItem('extendedToken')||localStorage.getItem('token')||'';let o=localStorage.getItem('activeOutlet')||localStorage.getItem('outlet_id')||'';if(t){let payload={jwt:t,outlet_id:o};if(navigator.clipboard){navigator.clipboard.writeText(JSON.stringify(payload)).catch(()=>{});}fetch('http://127.0.0.1:8765/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json()).then(d=>{alert('✅ Bilas.id Session Token & Outlet ID Transferred and Copied to Clipboard!');}).catch(e=>{alert('✅ Credentials JSON (JWT + Outlet ID) copied to clipboard! (Failed to send to 127.0.0.1:8765)');});}else{alert('❌ No Bilas.id session token found in this tab. Please log in first!');}}catch(e){alert('Error: '+e.message);}})();">🔖 Drag to Bookmarks Bar: Transfer Token to MCP</a>
             <p class="step-desc" style="margin-top:12px; margin-bottom:4px;">Or paste your <code>authData</code> / JWT token JSON below:</p>
             <input type="text" id="jwtInput" placeholder="Paste token or authData JSON here..." oninput="handlePaste(this.value)">
         </div>
@@ -283,8 +284,8 @@ def login_via_system_default_browser(port=8765):
             let outlet = "";
             try {
                 let parsed = JSON.parse(val);
-                jwt = parsed.extendedToken || parsed.token || val;
-                outlet = parsed.activeOutlet || parsed.outlet_id || "";
+                jwt = parsed.jwt || parsed.extendedToken || parsed.token || val;
+                outlet = parsed.outlet_id || parsed.activeOutlet || "";
             } catch (e) {}
             if (jwt.length > 20) {
                 sendTokenToLocalServer(jwt, outlet);
@@ -372,7 +373,7 @@ def save_manual_credentials(jwt_token: str, outlet_id: str = ""):
     jwt_clean = jwt_token.strip()
     payload = jwt_decode_payload(jwt_clean)
     out_clean = outlet_id.strip() if outlet_id else ""
-    
+
     st = {
         "jwt": jwt_clean,
         "outlet_id": out_clean,
@@ -381,21 +382,6 @@ def save_manual_credentials(jwt_token: str, outlet_id: str = ""):
         "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%S")
     }
     save_state(st)
-    
-    # If no outlet_id provided, attempt auto-resolution via profile API
-    if not st.get("outlet_id"):
-        try:
-            headers = dict(APP_TOKENS)
-            headers["Authorization"] = "Bearer " + jwt_clean
-            req = urllib.request.Request("https://apiweb.bilas.id/web/user/auth/profil", headers=headers, method="GET")
-            resp = urllib.request.urlopen(req, timeout=10)
-            res = json.loads(resp.read().decode("utf-8"))
-            outlets = res.get("result", {}).get("outletList", [])
-            if outlets:
-                st["outlet_id"] = outlets[0]["id"]
-                save_state(st)
-        except Exception:
-            pass
 
     return json.dumps({
         "status": "success",
@@ -517,7 +503,7 @@ def bilas_set_manual_credentials(jwt_token: str, outlet_id: str) -> str:
 
     Args:
         jwt_token: The COMPLETE JWT string from Bilas.id (e.g. eyJhbGciOiJIUzI1NiIs...). Must NOT be truncated.
-        outlet_id: Firestore outlet document ID (e.g. 2cvnOPoOgK9uZBQCc40c). Optional, auto-resolved if empty."""
+        outlet_id: Firestore outlet document ID (e.g. outlet_abc123). Optional if already configured in ~/.bilas_id/token_state.json."""
     return save_manual_credentials(jwt_token, outlet_id)
 
 # ---------------------------------------------------------------------------
