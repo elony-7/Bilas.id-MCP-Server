@@ -174,7 +174,7 @@ def login_via_system_default_browser(port=8765):
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }}
-        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 540px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
+        .card {{ background: #1e293b; padding: 32px; border-radius: 16px; width: 100%; max-width: 560px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; text-align: center; }}
         h2 {{ margin-top: 0; color: #38bdf8; font-size: 22px; }}
         p {{ color: #94a3b8; line-height: 1.5; font-size: 14px; margin-bottom: 20px; }}
         .btn {{ display: block; width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; box-sizing: border-box; transition: all 0.2s; text-align: center; margin-bottom: 12px; }}
@@ -196,51 +196,25 @@ def login_via_system_default_browser(port=8765):
         <p>Log in using your system browser with 100% Google security compliance.</p>
 
         <div class="step-box">
-            <div class="step-title">Step 1: Open Bilas Web Login Window</div>
-            <p class="step-desc">Click below to open Bilas.id in a dedicated browser window to log in safely via Google SSO or Password.</p>
-            <button class="btn" onclick="openBilasWindow()">🌐 1. Open Bilas.id Login Window</button>
+            <div class="step-title">Step 1: Open Bilas Web Login</div>
+            <p class="step-desc">Open Bilas.id web login in a new tab if you haven't logged in yet.</p>
+            <a href="https://web.bilas.id/masuk" target="_blank" class="btn">1. Open Bilas.id Web Login</a>
         </div>
 
         <div class="step-box">
-            <div class="step-title">Step 2: Auto-Grab Token Across Window</div>
-            <p class="step-desc">Once logged in, click below to automatically pull the token from the Bilas window!</p>
-            <button class="btn btn-green" onclick="grabTokenFromBilasWindow()">⚡ 2. Auto-Grab Token & Authorize Agent</button>
-            <input type="text" id="jwtInput" placeholder="Or paste JWT token / authData here..." oninput="handlePaste(this.value)">
+            <div class="step-title">Step 2: Connect Session Token</div>
+            <p class="step-desc">Drag the green button to your bookmarks bar, switch to your Bilas tab, and click it once!</p>
+            <a class="btn btn-green" href="javascript:(function(){{var a=JSON.parse(localStorage.getItem('authData')||'{{}}');var t=a.extendedToken||a.token||localStorage.getItem('extendedToken')||localStorage.getItem('token')||sessionStorage.getItem('extendedToken')||sessionStorage.getItem('token');var o=localStorage.getItem('activeOutlet')||localStorage.getItem('outlet_id')||'';if(!t){{alert('⚠️ Token not found in this tab! Make sure you are on web.bilas.id and logged in.');return;}}fetch('http://127.0.0.1:{port}/token',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{jwt:t,outlet_id:o}})}}).then(r=>r.json()).then(d=>alert('✅ Bilas.id Agent Authorized Successfully!')).catch(e=>alert('Error: '+e));}})();">
+                📌 Drag to Bookmarks: Authorize Bilas Agent
+            </a>
+            <p class="step-desc" style="margin-top:12px; margin-bottom:4px;">Or paste your <code>authData</code> / JWT token JSON below:</p>
+            <input type="text" id="jwtInput" placeholder="Paste token or authData JSON here..." oninput="handlePaste(this.value)">
         </div>
 
         <div id="statusBox" class="status"></div>
     </div>
 
     <script>
-        let bilasWin = null;
-
-        function openBilasWindow() {{
-            bilasWin = window.open('https://web.bilas.id/masuk', 'BilasAuthTab', 'width=600,height=750');
-            startAutoPoller();
-        }}
-
-        function grabTokenFromBilasWindow() {{
-            if (!bilasWin || bilasWin.closed) {{
-                bilasWin = window.open('https://web.bilas.id/masuk', 'BilasAuthTab', 'width=600,height=750');
-                alert('👉 Bilas login window opened! Please log in there, then click this button again.');
-                return;
-            }}
-            try {{
-                let storage = bilasWin.localStorage;
-                let authStr = storage.getItem('authData') || '{{}}';
-                let authObj = JSON.parse(authStr);
-                let token = authObj.extendedToken || authObj.token || storage.getItem('extendedToken') || storage.getItem('token');
-                let outlet = storage.getItem('activeOutlet') || storage.getItem('outlet_id') || '';
-
-                if (token) {{
-                    sendTokenToLocalServer(token, outlet);
-                    return;
-                }}
-            }} catch (e) {{}}
-
-            alert('👉 Please complete your login in the opened Bilas window first! Once logged in, click this button again.');
-        }}
-
         function sendTokenToLocalServer(jwt, outlet) {{
             fetch('/token', {{
                 method: 'POST',
@@ -249,34 +223,21 @@ def login_via_system_default_browser(port=8765):
             }}).then(r => r.json()).then(d => {{
                 if (d.status === 'success') {{
                     checkStatus();
-                    if (bilasWin && !bilasWin.closed) bilasWin.close();
                 }}
             }}).catch(() => {{}});
         }}
 
-        function startAutoPoller() {{
-            let interval = setInterval(() => {{
-                if (!bilasWin || bilasWin.closed) {{
-                    clearInterval(interval);
-                    return;
-                }}
-                try {{
-                    let storage = bilasWin.localStorage;
-                    let authStr = storage.getItem('authData') || '{{}}';
-                    let authObj = JSON.parse(authStr);
-                    let token = authObj.extendedToken || authObj.token || storage.getItem('extendedToken') || storage.getItem('token');
-                    if (token) {{
-                        sendTokenToLocalServer(token, storage.getItem('activeOutlet') || '');
-                        clearInterval(interval);
-                    }}
-                }} catch (e) {{}}
-            }}, 1500);
-        }}
-
         function handlePaste(val) {{
             val = val.trim();
-            if (val.length > 30) {{
-                sendTokenToLocalServer(val, '');
+            let jwt = val;
+            let outlet = '';
+            try {{
+                let parsed = JSON.parse(val);
+                jwt = parsed.extendedToken || parsed.token || val;
+                outlet = parsed.activeOutlet || parsed.outlet_id || '';
+            }} catch (e) {{}}
+            if (jwt.length > 20) {{
+                sendTokenToLocalServer(jwt, outlet);
             }}
         }}
 
@@ -286,7 +247,7 @@ def login_via_system_default_browser(port=8765):
                 .then(d => {{
                     if (d.authorized) {{
                         document.getElementById('statusBox').className = 'status success';
-                        document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized Successfully!</strong> Session state saved. You may close this tab.';
+                        document.getElementById('statusBox').innerHTML = '✅ <strong>Agent Authorized Successfully!</strong> Session state saved to ~/.bilas_id/token_state.json. You may close this tab.';
                     }}
                 }}).catch(() => {{}});
         }}
