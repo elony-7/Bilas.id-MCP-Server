@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bilas-id-mcp"
+version = "1.0.0"
+description = "Clean Model Context Protocol (MCP) Server for Bilas.id POS & Reporting Platform"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "mcp>=1.2.0",
+    "playwright>=1.40.0"
+]
+
+[project.scripts]
+bilas-mcp = "bilas_id_mcp.server:main"
