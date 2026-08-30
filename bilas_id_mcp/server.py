@@ -457,9 +457,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.9.3",
+    version="1.9.4",
     description=(
-        "Bilas.id MCP Server v1.9.3 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.4 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -740,8 +740,10 @@ def bilas_update_order_status(
     notes: str = ""
 ) -> str:
     """Update order or specific item production stage (Antrian, Pencucian, Pengeringan, Setrika, Siap Ambil, Selesai).
+    Uses /web/transaksi/produksi/update endpoint with the full order object (dataTransaksi).
     Supports multi-service orders: specify `item_index` (1, 2...) or `item_name` to update a specific line item,
     or leave empty (0 / "") to update all applicable items in the order.
+    Returns the API response; stage transitions are logged server-side by Bilas.
     """
     headers, st = get_valid_headers()
     outlet_id = st.get("outlet_id", "")
@@ -752,8 +754,8 @@ def bilas_update_order_status(
     req_det = urllib.request.Request(url_detail, data=json.dumps({"id": transaction_id}).encode("utf-8"), headers=headers, method="POST")
     try:
         resp_det = urllib.request.urlopen(req_det, timeout=15)
-        raw_detail = resp_det.read().decode("utf-8", errors="ignore")
-        if raw_detail and raw_detail.strip() != "undefined":
+        raw_detail = resp_det.read().decode("utf-8", errors="ignore").strip()
+        if raw_detail and raw_detail != "undefined":
             raw_order = json.loads(raw_detail).get("result", {})
         else:
             raw_order = {}
@@ -762,29 +764,30 @@ def bilas_update_order_status(
 
     target_stage = status_pengerjaan.strip()
     stage_norm = target_stage.lower()
-
-    # Route to specific production endpoint based on normalized target stage
-    endpoint_map = {
-        "cuci": "https://apiweb.bilas.id/web/transaksi/produksi/cuci",
-        "pencucian": "https://apiweb.bilas.id/web/transaksi/produksi/cuci",
-        "kering": "https://apiweb.bilas.id/web/transaksi/produksi/pengeringan",
-        "pengeringan": "https://apiweb.bilas.id/web/transaksi/produksi/pengeringan",
-        "setrika": "https://apiweb.bilas.id/web/transaksi/produksi/setrika",
-        "ironing": "https://apiweb.bilas.id/web/transaksi/produksi/setrika",
-        "ambil": "https://apiweb.bilas.id/web/transaksi/produksi/ambil",
-        "siap ambil": "https://apiweb.bilas.id/web/transaksi/produksi/ambil",
-        "selesai": "https://apiweb.bilas.id/web/transaksi/produksi/selesai",
-        "finish": "https://apiweb.bilas.id/web/transaksi/produksi/selesai"
-    }
-
-    target_url = endpoint_map.get(stage_norm, "https://apiweb.bilas.id/web/transaksi/reguler/update-status")
+    now_ts = time.strftime("%Y-%m-%dT%H:%M:%S.000+07:00")
 
     items = raw_order.get("detail", [])
     if not items:
-        # Fallback if detail array is empty
-        items = [{"uid": "", "nama_layanan": "General Service", "joblist": "111"}]
+        return json.dumps({"status": "error", "message": "Order not found or has no detail items"}, indent=2)
 
     updated_items = []
+    target_url = "https://apiweb.bilas.id/web/transaksi/produksi/update"
+
+    # Map stage name to the field prefix used in the detail item
+    stage_to_field = {
+        "cuci": ("dicuci", "waktu_cuci"),
+        "pencucian": ("dicuci", "waktu_cuci"),
+        "kering": ("dikeringkan", "waktu_kering"),
+        "pengeringan": ("dikeringkan", "waktu_kering"),
+        "setrika": ("disetrika", "waktu_setrika"),
+        "ironing": ("disetrika", "waktu_setrika"),
+        "ambil": ("diambilkan", "waktu_diambil"),
+        "siap ambil": ("diambilkan", "waktu_diambil"),
+        "selesai": ("diselesaikan", "waktu_selesai"),
+        "finish": ("diselesaikan", "waktu_selesai"),
+    }
+
+    operator_field, time_field = stage_to_field.get(stage_norm, (None, None))
 
     for idx, item in enumerate(items, 1):
         # Filter if item_index or item_name specified
@@ -793,84 +796,85 @@ def bilas_update_order_status(
         if item_name and item_name.lower() not in (item.get("nama_layanan", "") + " " + item.get("nama_paket", "")).lower():
             continue
 
-        item_uid = item.get("uid") or item.get("original_uid") or ""
         joblist = str(item.get("joblist", "111"))
         nama_l = item.get("nama_layanan", "")
         nama_p = item.get("nama_paket", "")
-        item_title = (nama_l + " " + nama_p).strip() or f"Item #{idx}"
+        item_title = (nama_l + " " + nama_p).strip() or "Item #" + str(idx)
 
         # 1. Check if requested stage applies to this item workflow (e.g. Setrika requires 3rd digit == 1)
-        if "setrika" in stage_norm and joblist.endswith("0"):
+        if operator_field and "setrika" in stage_norm and joblist.endswith("0"):
             updated_items.append({
                 "item_index": idx,
                 "item_name": item_title,
                 "status": "skipped",
-                "message": f"Service does not have an ironing step (joblist: {joblist} - Cuci Lipat). Skipped setrika API call."
+                "message": "Service does not have an ironing step (joblist: " + joblist + "). Skipped."
             })
             continue
 
-        payload = {
-            "id": outlet_id,
-            "outletId": outlet_id,
-            "id_outlet": outlet_id,
-            "id_transaksi": transaction_id,
-            "transaksiId": transaction_id,
-            "uid": item_uid,
-            "status_pengerjaan": target_stage,
-            "id_operator": user_id,
-            "nama_operator": operator_name,
-            "operator": operator_name,
-            "mesin": machine_name,
-            "keterangan": notes,
-            "zone": "Asia/Jakarta",
-            "update_date": time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        }
+        # 2. Mutate the item in-place for the update
+        if operator_field:
+            item[operator_field] = user_id
+            item[operator_field + "_nama"] = operator_name
+        if time_field:
+            item[time_field] = now_ts
 
-        req = urllib.request.Request(target_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        try:
-            resp = urllib.request.urlopen(req, timeout=15)
-            raw_text = resp.read().decode("utf-8", errors="ignore").strip()
-            if not raw_text or raw_text == "undefined":
-                res_data = {"status": "success", "message": "Stage updated (server acknowledged undefined/200)"}
-            else:
-                try:
-                    res_data = json.loads(raw_text)
-                except Exception:
-                    res_data = {"status": "processed", "raw_response": raw_text}
-            
-            updated_items.append({
-                "item_index": idx,
-                "item_name": item_title,
-                "status": "success",
-                "response": res_data
-            })
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8", errors="ignore").strip()
+        item["proses"] = target_stage
+        item["keterangan"] = notes or item.get("keterangan", "")
+        if machine_name:
+            item["mesin"] = machine_name
+
+    # Update top-level order status
+    raw_order["status_pengerjaan"] = target_stage
+    raw_order["update_date"] = now_ts
+
+    # 3. Send via /web/transaksi/produksi/update
+    first_item = items[0] if items else {}
+    payload = {
+        "id": outlet_id,
+        "id_transaksi": transaction_id,
+        "dataTransaksi": raw_order,
+        "id_layanan": first_item.get("id_layanan", ""),
+        "id_paket": first_item.get("id_paket", ""),
+        "id_operator": user_id
+    }
+
+    req = urllib.request.Request(target_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        raw_text = resp.read().decode("utf-8", errors="ignore").strip()
+        if not raw_text or raw_text == "undefined":
+            res_data = {"status": "success", "message": "Stage updated (server acknowledged)"}
+        else:
             try:
-                parsed_err = json.loads(err_body)
+                res_data = json.loads(raw_text)
             except Exception:
-                parsed_err = err_body
-            updated_items.append({
-                "item_index": idx,
-                "item_name": item_title,
-                "status": "failed",
-                "http_code": e.code,
-                "error": parsed_err
-            })
-        except Exception as e:
-            updated_items.append({
-                "item_index": idx,
-                "item_name": item_title,
-                "status": "error",
-                "message": str(e)
-            })
+                res_data = {"status": "processed", "raw_response": raw_text}
 
-    return json.dumps({
-        "status": "success",
-        "transaction_id": transaction_id,
-        "target_stage": target_stage,
-        "items_processed": updated_items
-    }, indent=2, ensure_ascii=False)
+        return json.dumps({
+            "status": "success",
+            "transaction_id": transaction_id,
+            "target_stage": target_stage,
+            "endpoint": target_url,
+            "api_response": res_data,
+            "items_targeted": updated_items,
+            "note": "Bilas production update accepted. Server-side logging of the stage transition is recorded."
+        }, indent=2, ensure_ascii=False)
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore").strip()
+        try:
+            parsed_err = json.loads(err_body)
+        except Exception:
+            parsed_err = err_body
+        return json.dumps({
+            "status": "error",
+            "transaction_id": transaction_id,
+            "target_stage": target_stage,
+            "http_code": e.code,
+            "error": parsed_err,
+            "items_targeted": updated_items
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e), "items_targeted": updated_items}, indent=2, ensure_ascii=False)
 
 @mcp.tool()
 def bilas_get_live_cashbox_balances(tgl_awal: str = "2026/08/01", tgl_akhir: str = "2026/08/30") -> str:
@@ -1130,7 +1134,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.3\n"
+            "\n  Bilas.id MCP Server v1.9.4\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"

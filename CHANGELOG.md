@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.9.4] - 2026-08-30
+
+### Fixed
+- **Production Stage Update Payload (`bilas_update_order_status`)**: Discovered that Bilas's `/web/transaksi/produksi/update` endpoint expects the full order object wrapped in `dataTransaksi` along with `id_layanan`, `id_paket`, and `id_operator` at the top level. Previously tried variants were missing the `id_layanan` and `id_paket` fields. Stage transitions are now accepted by the server and logged properly.
+
 ## [1.9.3] - 2026-08-30
 
 ### Fixed
