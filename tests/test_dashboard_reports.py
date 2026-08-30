@@ -4,6 +4,8 @@ Credentials and live network traffic stay out of this suite. Date-validation
 cases document the input contract the tool should enforce before a request.
 """
 import asyncio
+import contextlib
+import io
 import json
 import re
 import urllib.error
@@ -119,6 +121,36 @@ def test_dashboard_report_tools_are_registered():
     tools = asyncio.run(server.mcp.list_tools())
     names = {tool.name for tool in tools}
     assert {"bilas_get_cashbox_report", "bilas_get_live_cashbox_balances"} <= names
+
+
+# Verifies the --update CLI is wired into main() and the help text advertises
+# it. update_from_github() itself is exercised via a mocked subprocess so the
+# test never touches the network or runs a real pip.
+def test_update_flag_appears_in_help():
+    import contextlib
+    import io
+    import sys
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        sys.argv = ["bilas-mcp", "--help"]
+        server.main()
+    out = buf.getvalue()
+    assert "bilas-mcp --update" in out
+    assert "Update to latest version" in out
+
+
+def test_update_from_github_prints_success(monkeypatch):
+    import subprocess as _subprocess
+    fake = type("R", (), {"returncode": 0, "stdout": "Successfully installed bilas-id-mcp-1.9.99\n", "stderr": ""})()
+    monkeypatch.setattr(_subprocess, "run", lambda *a, **k: fake)
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        server.update_from_github()
+    out = buf.getvalue()
+    assert "Successfully installed" in out
+    assert "1.9.99" in out
 
 
 # Verifies the Ringkasan Outlet summary block surfaces the KPI numbers the

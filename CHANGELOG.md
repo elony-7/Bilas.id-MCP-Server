@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.9.18] - 2026-08-31
+
+### Added
+- `bilas-mcp --update` (alias `--upgrade`) for one-command self-update from
+  GitHub. Resolves the running Python interpreter via `sys.executable` and
+  runs `pip install --upgrade --force-reinstall --no-deps
+  git+https://github.com/elony-7/Bilas.id-MCP-Server.git`, so the update
+  always targets the same install location regardless of whether the user
+  invoked `bilas-mcp`, `python -m bilas_id_mcp.server`, or a virtualenv
+  script. No credentials are touched. New `update_from_github()` helper
+  plus two unit tests (help-text contract and mocked pip success path).
+
+### Usage
+```
+bilas-mcp --update         # pull and reinstall latest from main
+bilas-mcp --upgrade        # alias
+```
+
 ## [1.9.17] - 2026-08-30
 
 ### Added

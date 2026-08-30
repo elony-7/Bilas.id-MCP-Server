@@ -1,4 +1,4 @@
-# Bilas.id MCP Server (v1.9.17)
+# Bilas.id MCP Server (v1.9.18)
 
 Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 
@@ -92,3 +92,15 @@ All dashboard report tools:
 pip install git+https://github.com/elony-7/Bilas.id-MCP-Server.git
 playwright install
 ```
+
+### Updating to the latest version
+
+```bash
+bilas-mcp --update         # or --upgrade
+```
+
+The update command resolves your running Python via `sys.executable` and
+runs `pip install --upgrade --force-reinstall --no-deps` against the
+GitHub repo, so it always lands in the same install location — works
+identically whether you invoke `bilas-mcp`, `python -m
+bilas_id_mcp.server`, or a venv script.

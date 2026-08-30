@@ -1451,14 +1451,70 @@ def bilas_list_orders_by_status(status_pengerjaan: str = "Antrian", page: int = 
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Self-update
+# ---------------------------------------------------------------------------
+def update_from_github():
+    """Pull and reinstall the latest bilas-id-mcp from the GitHub repository."""
+    import subprocess
+    import textwrap
+
+    repo_url = "git+https://github.com/elony-7/Bilas.id-MCP-Server.git"
+    print(textwrap.dedent(f"""\
+        ╔══════════════════════════════════════════════════════════════╗
+        ║  Updating bilas-id-mcp from GitHub...                      ║
+        ║  Source: {repo_url:<48}  ║
+        ╚══════════════════════════════════════════════════════════════╝
+    """))
+
+    # Discover which Python / pip is running this process so the update
+    # targets the same install location rather than a system-wide default.
+    python_exec = sys.executable or "python"
+
+    cmd = [
+        python_exec, "-m", "pip", "install",
+        "--upgrade", "--force-reinstall", "--no-deps",
+        repo_url,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        output = stdout + stderr
+
+        # Find the installed version line to show the user
+        installed_line = ""
+        for line in output.splitlines():
+            if "Successfully installed" in line:
+                installed_line = line.strip()
+                break
+
+        if result.returncode == 0 and installed_line:
+            print(f"  ✅  {installed_line}")
+            print(f"  ℹ️  Run 'bilas-mcp --help' to see the updated version.")
+        elif result.returncode == 0:
+            print("  ✅  Already up to date — no newer version found on GitHub.")
+        else:
+            last_lines = "\n".join(output.splitlines()[-10:])
+            print(f"  ❌  pip exited with code {result.returncode}")
+            print(f"      {last_lines}")
+    except FileNotFoundError:
+        print("  ❌  Could not find Python/pip — make sure 'python -m pip' works.")
+    except subprocess.TimeoutExpired:
+        print("  ❌  pip timed out after 300 seconds — check your network connection.")
+    except Exception as exc:
+        print(f"  ❌  Update failed: {exc}")
+
+
 def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.15\n"
+            "\n  Bilas.id MCP Server v1.9.17\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"
+            "    bilas-mcp --update                Update to latest version from GitHub\n"
             "    bilas-mcp --token <JWT>            Save JWT token (outlet auto-resolved)\n"
             "    bilas-mcp --token <JWT> --outlet <ID>  Save JWT + explicit outlet ID\n"
             "    bilas-mcp --onboard                Interactive onboarding menu\n"
@@ -1485,6 +1541,12 @@ def main():
             "    bilas_start_remote_auth_bridge     Same as above\n"
             "  ─────────────────────────────────────────────────────\n"
         )
+        return
+
+    # Handle self-update before any other command so it works regardless of
+    # how the user invoked the script (no pip accidentally matching --token etc).
+    if "--update" in sys.argv or "--upgrade" in sys.argv:
+        update_from_github()
         return
 
     # Handle direct CLI token passing: bilas-mcp --token <jwt_token> [--outlet <outlet_id>]
