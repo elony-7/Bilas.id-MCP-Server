@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.16] - 2026-08-30
+
+### Fixed
+- `bilas_get_cashbox_report` now sends the dashboard's full request body
+  (`pemilik`, `dibuat_tgl`, `user`, `mode`, `tipe`, `send_data`) instead of
+  the minimal `{id, tgl_awal, tgl_akhir, req_id}` body. The minimal body
+  was silently returning `saldo_sebelum = 0` for every cashbox, dropping
+  the stored opening baseline the dashboard Cashbox tab displays
+  (e.g. Tunai 800,000 / BCA 620,746 / QRIS 41,802 for the August range).
+  With the full body, the per-cashbox `saldo_awal` now matches the
+  dashboard's value exactly. This also restores the live behavior that
+  v1.9.12 last exhibited before the Bilas endpoint tightened its body
+  requirements.
+
 ## [1.9.15] - 2026-08-30
 
 ### Fixed

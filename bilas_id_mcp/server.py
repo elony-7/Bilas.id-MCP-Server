@@ -680,6 +680,10 @@ def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str) -> str:
     Bilas calculates each cashbox's range-specific opening and closing balance
     server-side. This uses ``aruskasneraca`` rather than reconstructing rows
     from transaction-level Arus Kas data.
+
+    The dashboard's full request body (``pemilik``, ``user``, ``mode``, ``tipe``,
+    ``send_data``) is required — sending the minimal body silently zeroes out
+    the stored opening baseline that the dashboard Cashbox tab shows.
     """
     try:
         start, end = _validate_report_dates(tgl_awal, tgl_akhir)
@@ -687,7 +691,15 @@ def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str) -> str:
         return json.dumps({"status": "error", "message": str(exc)}, indent=2, ensure_ascii=False)
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
-    body = {"id": outlet_id, "tgl_awal": start, "tgl_akhir": end, "req_id": str(uuid.uuid4())}
+    user_id = st.get("user_id", "")
+    body = {
+        "req_id": str(uuid.uuid4()),
+        "tgl_awal": start, "tgl_akhir": end,
+        "id": outlet_id, "pemilik": user_id,
+        "dibuat_tgl": "2024-01-01T00:00:00.000Z",
+        "send_data": False, "tipe": "semua",
+        "user": f"web-{user_id}", "mode": "all list",
+    }
     req = urllib.request.Request(ARUSKAS_NERACA_URL, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
     try:
         response = json.loads(urllib.request.urlopen(req, timeout=60).read().decode("utf-8"))
