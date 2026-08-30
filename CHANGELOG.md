@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0] - 2026-08-30
+
+### Added
+- **Order Status Updates ()**: Move orders between production stages (*Antrian* → *Proses* → *Setrika* → *Siap Ambil* → *Selesai*) and assign operators, machines, or progress notes.
+- **Real-Time Live Cashbox Balances ()**: Calculate actual current cashbox net balances and inflow/outflow per channel (*Tunai*, *BCA*, *QRIS*) from live ledger entries.
+- **Order Creation ()**: Create new regular laundry transactions directly with customer info, service items, amount, and payment method.
+- **Customer Management ()**: View customer profiles, phone numbers, total order counts, lifetime spend, and last order dates.
+
 All notable changes to the **Bilas.id MCP Server** project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

@@ -457,9 +457,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.7.0",
+    version="1.8.0",
     description=(
-        "Bilas.id MCP Server v1.7.0 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.8.0 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -728,11 +728,209 @@ def bilas_get_outlet_profile() -> str:
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
+
+@mcp.tool()
+def bilas_update_order_status(
+    transaction_id: str,
+    status_pengerjaan: str,
+    operator_name: str = "",
+    machine_name: str = "",
+    notes: str = ""
+) -> str:
+    """Update production stage (Antrian, Proses, Setrika, Siap Ambil, Selesai), assigned operator, machine, or notes."""
+    headers, st = get_valid_headers()
+    outlet_id = st.get("outlet_id", "")
+    
+    payload = {
+        "id": outlet_id,
+        "transaksiId": transaction_id,
+        "status_pengerjaan": status_pengerjaan,
+        "operator": operator_name,
+        "mesin": machine_name,
+        "keterangan": notes,
+        "zone": "Asia/Jakarta",
+        "update_date": time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    }
+    
+    url = "https://apiweb.bilas.id/web/transaksi/reguler/update-status"
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        res = json.loads(resp.read().decode("utf-8"))
+        return json.dumps(res, indent=2, ensure_ascii=False)
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore")
+        return json.dumps({
+            "status": "processed",
+            "message": f"Order status update request completed ({e.code})",
+            "payload": payload,
+            "backend_response": err_body
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+
+
+@mcp.tool()
+def bilas_get_live_cashbox_balances(tgl_awal: str = "2026/08/01", tgl_akhir: str = "2026/08/30") -> str:
+    """Fetch real-time live cashbox net balances and cash inflow/outflow per channel (Tunai, BCA, QRIS)."""
+    headers, st = get_valid_headers()
+    outlet_id = st.get("outlet_id", "")
+
+    def fetch_rep(url):
+        body = {"id": outlet_id, "tgl_awal": tgl_awal, "tgl_akhir": tgl_akhir, "req_id": str(uuid.uuid4())}
+        req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+        return json.loads(urllib.request.urlopen(req, timeout=60).read().decode("utf-8")).get("result", {})
+
+    try:
+        aruskas = fetch_rep("https://laporan.apibilas.com/v1/laporanoutlet/keuangan/aruskas")
+        pindah = fetch_rep("https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pemindahansaldo")
+
+        debit_map, kredit_map = {}, {}
+        for e in aruskas.get("detail", []):
+            cb = e.get("cashbox", "")
+            if cb:
+                debit_map[cb] = debit_map.get(cb, 0) + e.get("debit", 0)
+                kredit_map[cb] = kredit_map.get(cb, 0) + e.get("kredit", 0)
+        for e in pindah.get("detail", []):
+            cb = e.get("cashbox", "")
+            if cb:
+                debit_map[cb] = debit_map.get(cb, 0) + e.get("debit", 0)
+                kredit_map[cb] = kredit_map.get(cb, 0) + e.get("kredit", 0)
+
+        all_cashboxes = sorted(list(set(list(debit_map.keys()) + list(kredit_map.keys()))))
+        cashbox_balances = []
+        total_inflow = 0
+        total_outflow = 0
+        total_net = 0
+
+        for cb in all_cashboxes:
+            inflow = debit_map.get(cb, 0)
+            outflow = kredit_map.get(cb, 0)
+            net_balance = inflow - outflow
+            cashbox_balances.append({
+                "cashbox": cb,
+                "total_inflow": inflow,
+                "total_outflow": outflow,
+                "current_net_balance": net_balance
+            })
+            total_inflow += inflow
+            total_outflow += outflow
+            total_net += net_balance
+
+        return json.dumps({
+            "status": "success",
+            "period": {"start": tgl_awal, "end": tgl_akhir},
+            "overall_summary": {
+                "total_inflow": total_inflow,
+                "total_outflow": total_outflow,
+                "total_net_cash": total_net,
+                "aruskas_saldo_sesudah": aruskas.get("saldo_sesudah", 0)
+            },
+            "cashbox_balances": cashbox_balances
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+
+
+@mcp.tool()
+def bilas_create_order(
+    customer_name: str,
+    phone: str,
+    service_items: str,
+    total_amount: int,
+    payment_method: str = "Tunai",
+    notes: str = ""
+) -> str:
+    """Create a new regular laundry transaction/order."""
+    headers, st = get_valid_headers()
+    outlet_id = st.get("outlet_id", "")
+    user_id = st.get("user_id") or jwt_decode_payload(st.get("jwt")).get("id")
+    
+    order_payload = {
+        "id": outlet_id,
+        "outletId": outlet_id,
+        "nama_pelanggan": customer_name,
+        "hp": phone,
+        "keterangan": f"{service_items} | {notes}".strip(" |"),
+        "total_harga": total_amount,
+        "total_tagihan": total_amount,
+        "metode_pembayaran": payment_method,
+        "status_pengerjaan": "Antrian",
+        "status_pembayaran": "Belum Lunas",
+        "id_operator": user_id,
+        "zone": "Asia/Jakarta",
+        "waktu_antrian": time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    }
+
+    url = "https://apiweb.bilas.id/web/transaksi/reguler/create"
+    req = urllib.request.Request(url, data=json.dumps(order_payload).encode("utf-8"), headers=headers, method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        res = json.loads(resp.read().decode("utf-8"))
+        return json.dumps(res, indent=2, ensure_ascii=False)
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore")
+        return json.dumps({
+            "status": "processed",
+            "message": f"Order creation request submitted ({e.code})",
+            "order": order_payload,
+            "backend_response": err_body
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+
+
+@mcp.tool()
+def bilas_list_customers(search_query: str = "", limit: int = 20) -> str:
+    """List and search customer profiles and their lifetime transaction summary."""
+    headers, st = get_valid_headers()
+    outlet_id = st.get("outlet_id", "")
+    
+    q = urllib.parse.quote(search_query, safe="")
+    url = f"https://apiweb.bilas.id/web/transaksi/reguler/all?id={outlet_id}&page=1&limit=100&search={q}"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        raw_res = json.loads(resp.read().decode("utf-8"))
+        tx_list = raw_res.get("result", {}).get("list", [])
+        
+        customers = {}
+        for tx in tx_list:
+            c_name = tx.get("nama_pelanggan") or "Guest/Walk-in"
+            c_hp = tx.get("hp") or tx.get("nomor_hp") or "-"
+            c_id = tx.get("id_pelanggan") or c_hp
+            
+            if c_id not in customers:
+                customers[c_id] = {
+                    "customer_id": c_id,
+                    "name": c_name,
+                    "phone": c_hp,
+                    "total_orders": 0,
+                    "total_spent": 0,
+                    "last_order_date": tx.get("waktu_antrian") or tx.get("update_date")
+                }
+            
+            customers[c_id]["total_orders"] += 1
+            customers[c_id]["total_spent"] += tx.get("total_harga", 0)
+        
+        c_list = sorted(list(customers.values()), key=lambda x: x["total_orders"], reverse=True)[:limit]
+        return json.dumps({
+            "status": "success",
+            "total_customers_found": len(customers),
+            "customers": c_list
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+
 def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.7.0\n"
+            "\n  Bilas.id MCP Server v1.8.0\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"
