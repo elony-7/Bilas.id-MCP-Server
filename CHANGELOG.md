@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.11] - 2026-08-30
+
+### Fixed
+- Match Cashbox-tab balances by requiring explicit per-cashbox opening balances and returning `saldo_awal` and `saldo_akhir`.
+- Prevent movement-only totals from being mislabeled as current cashbox balances.
+
 ## [1.9.9] - 2026-08-30
 
 ### Fixed

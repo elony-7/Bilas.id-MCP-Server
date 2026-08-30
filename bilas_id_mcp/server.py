@@ -457,7 +457,7 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.9.6",
+    version="1.9.11",
     description=(
         "Bilas.id MCP Server v1.9.6 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
@@ -521,7 +521,7 @@ def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str, base_opening_balance
     Args:
         tgl_awal: Start date YYYY/MM/DD (e.g. "2026/08/01")
         tgl_akhir: End date YYYY/MM/DD (e.g. "2026/08/30")
-        base_opening_balances: Optional dict of cashbox opening balances (default: all zero)"""
+        base_opening_balances: Optional dict of cashbox opening balances. Required because the API does not return per-cashbox opening balances."""
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
 
@@ -545,7 +545,13 @@ def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str, base_opening_balance
             period_debit[cb] = period_debit.get(cb, 0) + e.get("debit", 0)
             period_kredit[cb] = period_kredit.get(cb, 0) + e.get("kredit", 0)
 
-    base_balances = base_opening_balances or {"Tunai": 0, "BCA": 0, "QRIS": 0, "Dana": 0}
+    if base_opening_balances is None:
+        return json.dumps({
+            "status": "error",
+            "message": "base_opening_balances is required to calculate per-cashbox saldo akhir; the Arus Kas API only returns global saldo totals.",
+            "example": {"Tunai": 800000, "BCA": 620746, "Dana": 0, "QRIS": 41802},
+        }, indent=2, ensure_ascii=False)
+    base_balances = {str(k): int(v or 0) for k, v in base_opening_balances.items()}
     saldo_awal = dict(base_balances)
     all_cashboxes = sorted(list(set(list(base_balances.keys()) + list(period_debit.keys()) + list(period_kredit.keys()))))
     rows = []
@@ -1016,10 +1022,27 @@ def bilas_revert_item_stage(transaction_id: str, status_pengerjaan: str, item_in
 
 
 @mcp.tool()
-def bilas_get_live_cashbox_balances(tgl_awal: str = "2026/08/01", tgl_akhir: str = "2026/08/30") -> str:
-    """Fetch real-time live cashbox net balances and cash inflow/outflow per channel (Tunai, BCA, QRIS)."""
+def bilas_get_live_cashbox_balances(
+    tgl_awal: str = "2026/08/01",
+    tgl_akhir: str = "2026/08/30",
+    base_opening_balances: dict = None,
+) -> str:
+    """Return Cashbox-tab balances plus period debit and credit totals.
+
+    ``base_opening_balances`` should contain the per-cashbox balances at the
+    start of ``tgl_awal``. The API supplies global saldo totals, but not
+    per-cashbox opening balances, so silently assuming zero would misreport
+    the dashboard's saldo akhir.
+    """
     headers, st = get_valid_headers()
     outlet_id = st.get("outlet_id", "")
+    if base_opening_balances is None:
+        return json.dumps({
+            "status": "error",
+            "message": "base_opening_balances is required to calculate per-cashbox saldo akhir; the Arus Kas API only returns global saldo totals.",
+            "example": {"Tunai": 800000, "BCA": 620746, "Dana": 0, "QRIS": 41802},
+        }, indent=2, ensure_ascii=False)
+    opening = {str(k): int(v or 0) for k, v in base_opening_balances.items()}
 
     def fetch_rep(url):
         body = {"id": outlet_id, "tgl_awal": tgl_awal, "tgl_akhir": tgl_akhir, "req_id": str(uuid.uuid4())}
@@ -1027,55 +1050,51 @@ def bilas_get_live_cashbox_balances(tgl_awal: str = "2026/08/01", tgl_akhir: str
         return json.loads(urllib.request.urlopen(req, timeout=60).read().decode("utf-8")).get("result", {})
 
     try:
-        aruskas = fetch_rep("https://laporan.apibilas.com/v1/laporanoutlet/keuangan/aruskas")
-        pindah = fetch_rep("https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pemindahansaldo")
-
+        aruskas = fetch_rep(ARUSKAS_URL)
+        pindah = fetch_rep(PEMINDAHAN_URL)
         debit_map, kredit_map = {}, {}
-        for e in aruskas.get("detail", []):
-            cb = e.get("cashbox", "")
-            if cb:
-                debit_map[cb] = debit_map.get(cb, 0) + e.get("debit", 0)
-                kredit_map[cb] = kredit_map.get(cb, 0) + e.get("kredit", 0)
-        for e in pindah.get("detail", []):
-            cb = e.get("cashbox", "")
-            if cb:
-                debit_map[cb] = debit_map.get(cb, 0) + e.get("debit", 0)
-                kredit_map[cb] = kredit_map.get(cb, 0) + e.get("kredit", 0)
+        for report in (aruskas, pindah):
+            for entry in report.get("detail", []):
+                cashbox = entry.get("cashbox", "")
+                if cashbox:
+                    debit_map[cashbox] = debit_map.get(cashbox, 0) + int(entry.get("debit", 0) or 0)
+                    kredit_map[cashbox] = kredit_map.get(cashbox, 0) + int(entry.get("kredit", 0) or 0)
 
-        all_cashboxes = sorted(list(set(list(debit_map.keys()) + list(kredit_map.keys()))))
         cashbox_balances = []
-        total_inflow = 0
-        total_outflow = 0
-        total_net = 0
-
-        for cb in all_cashboxes:
-            inflow = debit_map.get(cb, 0)
-            outflow = kredit_map.get(cb, 0)
-            net_balance = inflow - outflow
+        for cashbox in sorted(set(opening) | set(debit_map) | set(kredit_map)):
+            saldo_awal = opening.get(cashbox, 0)
+            debit = debit_map.get(cashbox, 0)
+            kredit = kredit_map.get(cashbox, 0)
             cashbox_balances.append({
-                "cashbox": cb,
-                "total_inflow": inflow,
-                "total_outflow": outflow,
-                "current_net_balance": net_balance
+                "cashbox": cashbox,
+                "saldo_awal": saldo_awal,
+                "total_inflow": debit,
+                "total_outflow": kredit,
+                "debit": debit,
+                "kredit": kredit,
+                "saldo_akhir": saldo_awal + debit - kredit,
             })
-            total_inflow += inflow
-            total_outflow += outflow
-            total_net += net_balance
-
+        total_debit = sum(row["debit"] for row in cashbox_balances)
+        total_kredit = sum(row["kredit"] for row in cashbox_balances)
+        total_awal = sum(row["saldo_awal"] for row in cashbox_balances)
         return json.dumps({
             "status": "success",
             "period": {"start": tgl_awal, "end": tgl_akhir},
             "overall_summary": {
-                "total_inflow": total_inflow,
-                "total_outflow": total_outflow,
-                "total_net_cash": total_net,
-                "aruskas_saldo_sesudah": aruskas.get("saldo_sesudah", 0)
+                "saldo_awal": total_awal,
+                "total_inflow": total_debit,
+                "total_outflow": total_kredit,
+                "total_debit": total_debit,
+                "total_kredit": total_kredit,
+                "total_net_cash": total_debit - total_kredit,
+                "saldo_akhir": total_awal + total_debit - total_kredit,
+                "aruskas_saldo_sebelum": aruskas.get("saldo_sebelum", 0),
+                "aruskas_saldo_sesudah": aruskas.get("saldo_sesudah", 0),
             },
-            "cashbox_balances": cashbox_balances
+            "cashbox_balances": cashbox_balances,
         }, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
-
 
 
 @mcp.tool()
