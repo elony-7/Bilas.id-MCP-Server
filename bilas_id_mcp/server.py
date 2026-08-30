@@ -564,10 +564,74 @@ def _report_tool(report_name, tgl_awal, tgl_akhir):
     return json.dumps(result, indent=2, ensure_ascii=False)
 
 
+def _summarize_ringkasan(api_response):
+    """Pull the per-outlet summary block out of the Ringkasan Outlet response.
+
+    The dashboard's Transaksi tab and many KPI cards read from this block.
+    Keys surfaced: omzet, pendapatan, paket, pemasukan, pengeluaran, piutang,
+    kasbon, penjualan, pembulatan, trxmasuk, trxpaket, trxbatal, satuan,
+    meter, kiloan, emoney, trxemoney, trxpenjualan, trxpembelian, hutang,
+    labarugi, selfservice, trxselfservice, biaya_merchant. The `graph` list
+    is the daily Keuangan chart, kept verbatim.
+    """
+    summary_keys = {
+        "omzet", "pendapatan", "paket", "pemasukan", "pengeluaran", "piutang",
+        "kasbon", "penjualan", "pembulatan", "trxmasuk", "trxpaket", "trxbatal",
+        "satuan", "meter", "kiloan", "emoney", "trxemoney", "trxpenjualan",
+        "trxpembelian", "hutang", "labarugi", "selfservice", "trxselfservice",
+        "biaya_merchant",
+    }
+    try:
+        results = api_response.get("result") or []
+    except AttributeError:
+        return None
+    if not results:
+        return None
+    first = results[0] if isinstance(results, list) else results
+    if not isinstance(first, dict):
+        return None
+    # The endpoint returns a {<outlet_id>: [...], "semua": [...]} map. Pick
+    # the entry that actually carries summary numbers (the one with the
+    # expected key set), preferring "semua" if present.
+    candidates = []
+    if "semua" in first:
+        candidates.append(first["semua"])
+    for k, v in first.items():
+        if k == "semua":
+            continue
+        if isinstance(v, list) and v and isinstance(v[0], dict) and any(x in v[0] for x in summary_keys):
+            candidates.append(v)
+    for cand in candidates:
+        if not cand:
+            continue
+        row = cand[0] if isinstance(cand, list) and cand else (cand if isinstance(cand, dict) else None)
+        if not isinstance(row, dict):
+            continue
+        summary = {k: row[k] for k in summary_keys if k in row}
+        summary["graph"] = row.get("graph", [])
+        return summary
+    return None
+
+
 @mcp.tool()
 def bilas_get_ringkasan_outlet(tgl_awal: str, tgl_akhir: str) -> str:
-    """Read-only Ringkasan Outlet report; dates use YYYY/MM/DD. Returns raw response and metadata."""
-    return _report_tool("ringkasan_outlet", tgl_awal, tgl_akhir)
+    """Ringkasan Outlet summary report; dates use YYYY/MM/DD.
+
+    Returns the per-outlet KPI summary block (omzet, pendapatan, kiloan in KG,
+    satuan in pieces, meter, trxmasuk, trxemoney, etc.) at the top of the
+    response so the dashboard's Keuangan and Transaksi KPI cards can be read
+    without walking the raw payload. The full Bilas response is preserved
+    under `api_response` for traceability.
+    """
+    try:
+        result = _post_report("ringkasan_outlet", tgl_awal, tgl_akhir)
+    except (PermissionError, ValueError) as exc:
+        result = {"status": "error", "message": str(exc)}
+    if result.get("status") == "success":
+        summary = _summarize_ringkasan(result.get("api_response", {}))
+        if summary:
+            result = {"status": "success", "summary": summary, **result}
+    return json.dumps(result, indent=2, ensure_ascii=False)
 
 @mcp.tool()
 def bilas_get_pendapatan_transaksi(tgl_awal: str, tgl_akhir: str) -> str:

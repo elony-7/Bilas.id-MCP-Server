@@ -1,0 +1,242 @@
+BILAS.ID MCP SERVER — v1.9.16 TOOL CATALOG
+=============================================
+Generated 2026-08-31 against running installation.
+All 32 tools exposed through the Model Context Protocol.
+
+
+
+
+
+================================================================================
+1. AUTHENTICATION & ONBOARDING (3 tools)
+================================================================================
+
+
+| Tool                              		| Type    	| Purpose                                                  			|
+|-----------------------------------	|---------	|----------------------------------------------------------	|
+| bilas_launch_browser_login        	| write   	| Open Bilas.id login in the system default browser with a 	|
+|                                   			|         	| local HTTP bridge on 127.0.0.1:8765.                     		|
+| bilas_start_remote_auth_bridge    	| write   	| Same bridge; for headless/cloud setups where no terminal 	|
+|                                   			|         	| popup is available.                                      		|
+| bilas_set_manual_credentials      	|write   	| Save a JWT token and optional Outlet ID directly into    	|
+|                                   			|         	|~/.bilas_id/token_state.json without using a browser.    	|
+
+
+
+
+================================================================================
+2. CASHBOX & LIVE LEDGER (2 tools)
+================================================================================
+
+| Tool                              		| Type    	| Purpose                                                  			|
+|-----------------------------------	|---------	|----------------------------------------------------------	|
+| bilas_get_cashbox_report          	| read    	| 5-Column per-cashbox accounting matrix                  	|
+|                                   			|         	| (Saldo Awal + Debit - Kredit = Saldo Akhir) for a date   	|
+|                                   			|         	| range. Tunai / BCA / Dana / QRIS rows + TOTAL summary.   	|
+|                                   			|         	| v1.9.16: now uses full dashboard body so saldo_awal      	|
+|                                   			|         	| matches the dashboard Cashbox tab exactly.              	|
+| bilas_get_live_cashbox_balances   	| read    	| Convenience wrapper around bilas_get_cashbox_report;     	|
+|                                   			|         	| returns the same data with period / source metadata.     	|
+
+
+
+
+================================================================================
+3. FINANCIAL CATEGORIES & EXPENSES (3 tools)
+================================================================================
+
+| Tool                              		| Type    	| Purpose                                                  			|
+|-----------------------------------	|---------	|----------------------------------------------------------	|
+| bilas_get_financial_categories    	| read    	| List all operational expense & income categories         	|
+|                                   			|         	| (pengeluaran / pemasukan) configured for the outlet.     	|
+| bilas_add_expense                 		| write   	| Record a new operational expense (Pengeluaran) entry.    	|
+| bilas_delete_expense              		| write   	| Soft-delete a financial record by its keuanganId.        	|
+
+
+
+
+================================================================================
+4. ORDERS & PRODUCTION (7 tools)
+================================================================================
+
+| Tool                              		| Type    	| Purpose                                                  			|
+|-----------------------------------	|---------	|----------------------------------------------------------	|
+| bilas_search_invoice              		| read    	| Look up orders by Nota Number (TRX/...), customer name,  	|
+|                                   			|         	| or phone number with pagination.                         		|
+| bilas_get_order_details           		| read    	| Line-by-line Detail Layanan (service, weight, unit       	|
+|                                   			|         	| price, perfume, notes, image URL) for one transaction.   	|
+| bilas_list_orders_by_status       		| read    	| Filter active orders by production stage                 		|
+|                                   			|         	| (Antrian, Proses, Setrika, Siap Ambil, Selesai, all).    	|
+| bilas_create_order                		| write   	| Create a new regular laundry transaction with customer   	|
+|                                   			|         	| info, service items, amount, payment method.             	|
+| bilas_update_order_status         	| write   	| Move an order or one specific item to a new production  	|
+|                                   			|         	| stage (Antrian, Pencucian, Pengeringan, Setrika,         	|	
+|                                   			|         	| Siap Ambil, Selesai) and verify persistence.             	|
+| bilas_revert_item_stage           		| write   	| Move exactly one detail item backward to an earlier      	|
+|                                   			|         	| production stage using the dashboard Koreksi/Riwayat     	|
+|                                   			|         	| payload; verifies persistence after API ack.             	|
+| bilas_get_production_summary      	| read    	| Real-time production pipeline counters                   		|
+|                                   			|         	| (Antrian, Proses, Siap Ambil, Siap Antar, Konfirmasi,    	|
+|                                   			|         	| Validasi).                                               			|
+
+
+
+
+================================================================================
+5. CUSTOMER MANAGEMENT (1 tool)
+================================================================================
+
+| Tool                              		| Type    	| Purpose                                                  			|
+|-----------------------------------	|---------	|----------------------------------------------------------	|
+| bilas_list_customers              		| read    	| Fast native customer directory (name, phone, email,      	|
+|                                   			|         	| gender, registration date, lifetime spend, last order).  	|
+|                                   			|         	| Replaced a 25s full-order scan with the Bilas native     	|
+|                                   			|         	| /web/pelanggan/list endpoint (<0.6s).                    		|
+
+
+
+================================================================================
+6. IoT SMART MACHINES (1 tool)
+================================================================================
+
+| Tool                              	| Type    	| Purpose                                                  				|
+|-----------------------------------|---------	|----------------------------------------------------------		|
+| bilas_list_machines               	| read    	| Real-time status and pulse metrics for connected washers 		|
+|                                   		|         	| and dryers.                                              				|
+
+
+
+================================================================================
+7. OUTLET PROFILE (1 tool)
+================================================================================
+
+| Tool                              	| Type    	| Purpose                                                  				|
+|---------------------------------	|---------	|----------------------------------------------------------		|
+| bilas_get_outlet_profile          	| read    	| Business details, address, city, province, phone,        		|
+|                                   		|         	| operating hours, location coordinates, configurations.   		|
+
+
+
+
+================================================================================
+8. DASHBOARD REPORTS - FINANCIAL (8 tools, read-only, dates YYYY/MM/DD)
+================================================================================
+
+| Tool                              		| Type    | Purpose                                                  			|
+|----------------------------------	|---------|----------------------------------------------------------		|		
+| bilas_get_ringkasan_outlet        	| read    | Ringkasan Outlet summary.                                		|
+| bilas_get_pendapatan_transaksi    	| read    | Pendapatan Transaksi / Omzet (transaction income).       	|
+| bilas_get_topup_paket             		| read    | Topup Paket income.                                      		|
+| bilas_get_topup_deposit           		| read    | Topup Deposit / e-money income.                          		|
+| bilas_get_self_service_income     	| read    | Self-service QRIS income.                                		|
+| bilas_get_other_income            		| read    | Other income (Pendapatan Lain).                          		|
+| bilas_get_piutang                 		| read    | Kasbon & Piutang (receivables).                          		|
+| bilas_get_pembulatan              		| read    | Pembulatan (rounding adjustments).                       		|
+| bilas_get_merchant_fees           	| read    | Biaya Layanan (merchant fees).                           		|
+
+Each tool:
+  - Validates date format and ordering locally before any network call.
+  - Returns the raw Bilas response plus a normalized_metadata block
+    (source endpoint, period, request_id, outlet_id, HTTP status).
+
+
+
+
+================================================================================
+9. DASHBOARD REPORTS - CUSTOMER (5 tools, read-only, dates YYYY/MM/DD)
+================================================================================
+
+| Tool                              		| Type    	| Purpose                                                  			|
+|-----------------------------------	|---------	|----------------------------------------------------------	|
+| bilas_get_customer_growth         	| read    	| Pertumbuhan Pelanggan (customer growth).                 	|
+| bilas_get_top_customers           	| read    	| Top customers by spend.                                  		|
+| bilas_get_package_quota           	| read    	| Remaining package quota per customer.                    	|
+| bilas_get_deposit_balance         	| read    	| Customer deposit / e-money balances.                     	|
+| bilas_get_kasbon_history          	| read    	| Customer kasbon history.                                 		|
+
+
+
+
+================================================================================
+SUMMARY
+================================================================================
+
+Total tools exposed via MCP	:	32
+  Read-only tools		:	23
+  Write tools (use with care)	:       	9
+
+Read-only tools (23):
+  - Cashbox & live ledger	:          	2
+  - Financial categories	:           	1
+  - Orders & production	:            	3  (search, details, status list, summary)
+  - Customer management	:            	1
+  - IoT machines		:                 1
+  - Outlet profile		:                 1
+  - Dashboard financial reports:    	8
+  - Dashboard customer reports:     	5
+  - Auth/onboarding		:                1  (launch_browser_login is a side-effecting
+                                         		write; start_remote_auth_bridge is too;
+                                         		set_manual_credentials is a write)
+
+Write tools (9):
+  - Auth/onboarding		:                3  (launch_browser_login,
+                                         		start_remote_auth_bridge,
+                                         		set_manual_credentials)
+  - Financial		:              	2  (add_expense, delete_expense)
+  - Orders & production	:            	4  (create_order, update_order_status,
+                                         		revert_item_stage, plus the auth
+                                         		tools above bring the catalog total to 32)
+
+Dashboard report tools (14 total, all read-only):
+  - Financial		:  ringkasan_outlet, pendapatan_transaksi, topup_paket,
+                			topup_deposit, self_service_income, other_income,
+                			piutang, pembulatan, merchant_fees
+  - Customer		:   customer_growth, top_customers, package_quota,
+                			deposit_balance, kasbon_history
+
+All dashboard tools accept tgl_awal / tgl_akhir in YYYY/MM/DD and return
+the raw API response plus normalized metadata for traceability.
+
+
+
+
+================================================================================
+INSTALLATION
+================================================================================
+
+pip install git+https://github.com/elony-7/Bilas.id-MCP-Server.git@v1.9.16
+playwright install
+
+CLI: bilas-mcp [--token <JWT>] [--outlet <ID>] [--remote-bridge] [--help]
+State file: ~/.bilas_id/token_state.json
+Persistent dashboard profile: ~/.bilas_id/dashboard_browser_profile
+
+
+
+
+
+================================================================================
+VERSION HISTORY (recent)
+================================================================================
+
+v1.9.16  		bilas_get_cashbox_report now sends the full dashboard body so
+         		saldo_awal matches the Cashbox tab exactly.
+v1.9.15  		Dashboard report endpoints corrected to live Bilas paths; full
+         		request body shape added; ringkasan_outlet special id shape.
+v1.9.14  		Restored x-access-token and x-access-web-token defaults that
+         v1.9.13 		dropped; v1.9.13 was returning HTTP 401 on every call.
+v1.9.13  		Added 14 read-only dashboard report tools covering Ringkasan
+         		Outlet, financial reports, and customer analytics.
+v1.9.12  		bilas_get_cashbox_report now uses aruskasneraca for exact
+         		per-cashbox opening / debit / credit / closing balances.
+v1.9.11  		Match Cashbox-tab balances with explicit per-cashbox openings.
+v1.9.9   		Include all required waktu_* timestamps in production payloads.
+v1.9.7   		Match Koreksi/Riwayat payload for backward corrections.
+v1.9.6   		Production update + backward-stage correction tools released.
+v1.9.4   		/web/transaksi/produksi/update payload structure corrected.
+v1.9.2   		Granular per-item stage updates + dedicated production endpoints.
+v1.9.1   		bilas_list_customers now uses the native pelanggan/list endpoint.
+v1.9.0   		Added order item breakdown and status-based order listing.
+v1.8.0   		Order status updates, live cashbox, order creation, customer mgmt.
+v1.7.0   		Full MCP metadata exposure + JSON bookmarklet payload.
+v1.6.0   		First tagged production release.

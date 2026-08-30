@@ -1,4 +1,4 @@
-# Bilas.id MCP Server (v1.9.16)
+# Bilas.id MCP Server (v1.9.17)
 
 Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 
@@ -61,7 +61,7 @@ bilas-mcp --token "eyJhbGci..." --outlet "2cvnOPoOgK9uZBQCc40c"
 - `bilas_get_outlet_profile`: Fetches business details, address, location coordinates, and store configurations.
 
 ### 6. 📈 Dashboard Reports (read-only)
-- `bilas_get_ringkasan_outlet` — Outlet summary (Ringkasan Outlet).
+- `bilas_get_ringkasan_outlet` — Outlet summary (Ringkasan Outlet) **with parsed KPI block**: `kiloan` (KG), `satuan` (pcs), `meter`, `omzet`, `pendapatan`, `pengeluaran`, `labarugi`, `trxmasuk`, `trxbatal`, plus `graph` (daily chart array).
 - `bilas_get_pendapatan_transaksi` — Transaction income / Omzet (Pendapatan Transaksi).
 - `bilas_get_topup_paket` — Topup Paket income.
 - `bilas_get_topup_deposit` — Topup Deposit / e-money income.

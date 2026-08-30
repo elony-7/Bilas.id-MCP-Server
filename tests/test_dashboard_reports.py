@@ -119,3 +119,35 @@ def test_dashboard_report_tools_are_registered():
     tools = asyncio.run(server.mcp.list_tools())
     names = {tool.name for tool in tools}
     assert {"bilas_get_cashbox_report", "bilas_get_live_cashbox_balances"} <= names
+
+
+# Verifies the Ringkasan Outlet summary block surfaces the KPI numbers the
+# dashboard Transaksi and Keuangan cards read.
+def test_ringkasan_summarizer_extracts_kpi_block():
+    api = {
+        "value": 1,
+        "message": "Success",
+        "result": [
+            {
+                "semua": [
+                    {
+                        "omzet": 7693360, "pendapatan": 7307280, "kiloan": 723.76,
+                        "satuan": 72, "meter": 16.2, "trxmasuk": 113, "trxbatal": 16,
+                        "graph": [{"tanggal": "01/08/2026", "omzet": 0}],
+                    }
+                ]
+            }
+        ],
+    }
+    summary = server._summarize_ringkasan(api)
+    assert summary is not None
+    assert summary["kiloan"] == 723.76
+    assert summary["satuan"] == 72
+    assert summary["trxmasuk"] == 113
+    assert summary["omzet"] == 7693360
+    assert summary["graph"][0]["tanggal"] == "01/08/2026"
+
+
+def test_ringkasan_summarizer_handles_empty_response():
+    assert server._summarize_ringkasan({"value": 1, "result": []}) is None
+    assert server._summarize_ringkasan({}) is None

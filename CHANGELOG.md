@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.9.17] - 2026-08-30
+
+### Added
+- `bilas_get_ringkasan_outlet` now returns a parsed `summary` block at the top
+  of the response, surfaced directly from the `result[0].semua[0]` KPI payload
+  the dashboard's Keuangan and Transaksi tabs read. Key fields surfaced:
+  - `kiloan` (total KG processed)
+  - `satuan` (total piece-count items)
+  - `meter` (total meters, e.g. curtains)
+  - `omzet`, `pendapatan`, `pengeluaran`, `labarugi`
+  - `trxmasuk` (orders received), `trxbatal` (cancelled)
+  - `trxemoney`, `trxselfservice`, `biaya_merchant`
+  - `graph` (daily chart array, carried verbatim)
+- New helper `_summarize_ringkasan(api_response)` extracts the summary block,
+  handling both the `semua` and per-outlet key shapes. Used internally by
+  `bilas_get_ringkasan_outlet` and available for future tools.
+- Two new unit tests covering the summarizer (happy path + empty response).
+
+This means "how many KG was processed in August?" can now be answered by
+`bilas_get_ringkasan_outlet("2026/08/01","2026/08/30")` reading
+`summary.kiloan` — no per-order line-item summation needed.
+
 ## [1.9.16] - 2026-08-30
 
 ### Fixed
