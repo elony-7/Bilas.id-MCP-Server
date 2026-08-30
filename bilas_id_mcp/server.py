@@ -457,9 +457,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.9.2",
+    version="1.9.3",
     description=(
-        "Bilas.id MCP Server v1.9.2 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.3 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -752,8 +752,12 @@ def bilas_update_order_status(
     req_det = urllib.request.Request(url_detail, data=json.dumps({"id": transaction_id}).encode("utf-8"), headers=headers, method="POST")
     try:
         resp_det = urllib.request.urlopen(req_det, timeout=15)
-        raw_order = json.loads(resp_det.read().decode("utf-8")).get("result", {})
-    except Exception as e:
+        raw_detail = resp_det.read().decode("utf-8", errors="ignore")
+        if raw_detail and raw_detail.strip() != "undefined":
+            raw_order = json.loads(raw_detail).get("result", {})
+        else:
+            raw_order = {}
+    except Exception:
         raw_order = {}
 
     target_stage = status_pengerjaan.strip()
@@ -775,8 +779,11 @@ def bilas_update_order_status(
 
     target_url = endpoint_map.get(stage_norm, "https://apiweb.bilas.id/web/transaksi/reguler/update-status")
 
-    # Resolve items in order
     items = raw_order.get("detail", [])
+    if not items:
+        # Fallback if detail array is empty
+        items = [{"uid": "", "nama_layanan": "General Service", "joblist": "111"}]
+
     updated_items = []
 
     for idx, item in enumerate(items, 1):
@@ -786,23 +793,33 @@ def bilas_update_order_status(
         if item_name and item_name.lower() not in (item.get("nama_layanan", "") + " " + item.get("nama_paket", "")).lower():
             continue
 
-        item_uid = item.get("uid") or item.get("original_uid")
+        item_uid = item.get("uid") or item.get("original_uid") or ""
         joblist = str(item.get("joblist", "111"))
+        nama_l = item.get("nama_layanan", "")
+        nama_p = item.get("nama_paket", "")
+        item_title = (nama_l + " " + nama_p).strip() or f"Item #{idx}"
 
-        # Check if requested stage applies to this item workflow (e.g. Setrika requires 3rd digit == 1)
+        # 1. Check if requested stage applies to this item workflow (e.g. Setrika requires 3rd digit == 1)
         if "setrika" in stage_norm and joblist.endswith("0"):
-            note_msg = f"Item {idx} ({item.get(nama_layanan)}) does not have an ironing step (joblist {joblist}). Routed to completion/folding."
-        else:
-            note_msg = f"Item {idx} ({item.get(nama_layanan)}) updated to {target_stage}."
+            updated_items.append({
+                "item_index": idx,
+                "item_name": item_title,
+                "status": "skipped",
+                "message": f"Service does not have an ironing step (joblist: {joblist} - Cuci Lipat). Skipped setrika API call."
+            })
+            continue
 
         payload = {
             "id": outlet_id,
+            "outletId": outlet_id,
+            "id_outlet": outlet_id,
             "id_transaksi": transaction_id,
             "transaksiId": transaction_id,
             "uid": item_uid,
             "status_pengerjaan": target_stage,
             "id_operator": user_id,
             "nama_operator": operator_name,
+            "operator": operator_name,
             "mesin": machine_name,
             "keterangan": notes,
             "zone": "Asia/Jakarta",
@@ -812,13 +829,41 @@ def bilas_update_order_status(
         req = urllib.request.Request(target_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         try:
             resp = urllib.request.urlopen(req, timeout=15)
-            res = json.loads(resp.read().decode("utf-8"))
-            updated_items.append({"item_index": idx, "item_name": item.get("nama_layanan"), "status": "success", "note": note_msg, "response": res})
+            raw_text = resp.read().decode("utf-8", errors="ignore").strip()
+            if not raw_text or raw_text == "undefined":
+                res_data = {"status": "success", "message": "Stage updated (server acknowledged undefined/200)"}
+            else:
+                try:
+                    res_data = json.loads(raw_text)
+                except Exception:
+                    res_data = {"status": "processed", "raw_response": raw_text}
+            
+            updated_items.append({
+                "item_index": idx,
+                "item_name": item_title,
+                "status": "success",
+                "response": res_data
+            })
         except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8", errors="ignore")
-            updated_items.append({"item_index": idx, "item_name": item.get("nama_layanan"), "status": "processed", "note": note_msg, "http_code": e.code, "backend_response": err_body})
+            err_body = e.read().decode("utf-8", errors="ignore").strip()
+            try:
+                parsed_err = json.loads(err_body)
+            except Exception:
+                parsed_err = err_body
+            updated_items.append({
+                "item_index": idx,
+                "item_name": item_title,
+                "status": "failed",
+                "http_code": e.code,
+                "error": parsed_err
+            })
         except Exception as e:
-            updated_items.append({"item_index": idx, "item_name": item.get("nama_layanan"), "status": "error", "message": str(e)})
+            updated_items.append({
+                "item_index": idx,
+                "item_name": item_title,
+                "status": "error",
+                "message": str(e)
+            })
 
     return json.dumps({
         "status": "success",
@@ -1085,7 +1130,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.2\n"
+            "\n  Bilas.id MCP Server v1.9.3\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"

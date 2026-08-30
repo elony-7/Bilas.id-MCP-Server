@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.3] - 2026-08-30
+
+### Fixed
+- **Joblist Workflow Guard (`bilas_update_order_status`)**: Prevent sending invalid *Setrika* API calls to non-ironing services (e.g., *Cuci Lipat* with `joblist: 110`). The tool now gracefully skips the call with an informative message.
+- **Robust Response Parser**: Added protection against non-JSON or `undefined` backend responses from production endpoints so JSONDecodeError is never raised.
+- **Clear Item & Stage Logging**: Returned structured breakdown showing status for each line item processed in multi-service orders.
+
 ## [1.9.2] - 2026-08-30
 
 ### Enhanced
