@@ -1,4 +1,4 @@
-"""Bilas.id Clean MCP Server Module (v1.9.13)
+"""Bilas.id Clean MCP Server Module (v1.9.14)
 
 Comprehensive Model Context Protocol (MCP) server for Bilas.id POS & Reporting Platform:
   - Multi-Modal Onboarding (Interactive Playwright GUI, Automated OAuth Bridge, Manual Token Paste, Env Vars)
@@ -31,12 +31,16 @@ USER_HOME = Path.home()
 CONFIG_DIR = USER_HOME / ".bilas_id"
 STATE_FILE = CONFIG_DIR / "token_state.json"
 
-# Public application headers are optional; credentials always come from the user session.
-APP_TOKENS = {key: value for key, value in {
-    "x-access-token": os.environ.get("BILAS_ACCESS_TOKEN", ""),
-    "x-access-web-token": os.environ.get("BILAS_WEB_TOKEN", ""),
+# Bilas identifies the calling application via two static headers
+# (`x-access-token`, `x-access-web-token`) in addition to the user JWT.
+# They can be overridden at runtime with the BILAS_ACCESS_TOKEN and
+# BILAS_WEB_TOKEN environment variables, but default values are required
+# for the dashboard report endpoints to authorize requests at all.
+APP_TOKENS = {
+    "x-access-token": os.environ.get("BILAS_ACCESS_TOKEN", "sjgyfne73592643gedudney3628465hgrdt"),
+    "x-access-web-token": os.environ.get("BILAS_WEB_TOKEN", "UD1P6jZ0XKErPm5hQ4dKSXu5MQv6h8oOGeT78CVpXXAxC7H4LrtEZtj2BnwHKKcnuLfRtZYvne3Qlb2aUVg"),
     "Content-Type": "application/json",
-}.items() if value}
+}
 
 ARUSKAS_URL = "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/aruskas"
 ARUSKAS_NERACA_URL = "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/aruskasneraca"
@@ -475,9 +479,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.9.13",
+    version="1.9.14",
     description=(
-        "Bilas.id MCP Server v1.9.13 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.14 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -1351,7 +1355,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.13\n"
+            "\n  Bilas.id MCP Server v1.9.14\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"

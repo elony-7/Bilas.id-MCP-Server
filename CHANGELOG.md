@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.9.14] - 2026-08-30
+
+### Fixed
+- Restore the `x-access-token` and `x-access-web-token` default values that
+  the Bilas API requires on dashboard report requests. v1.9.13 dropped them
+  to a strictly env-driven model, which caused every authenticated call to
+  return `HTTP 401 Unauthorized`. The defaults now match the values shipped
+  before v1.9.13 while the `BILAS_ACCESS_TOKEN` and `BILAS_WEB_TOKEN`
+  environment variables continue to override them for deployments that
+  inject their own application credentials.
+
 ## [1.9.13] - 2026-08-30
 
 ### Added
