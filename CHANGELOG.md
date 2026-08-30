@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.12] - 2026-08-30
+
+### Fixed
+- Use Bilas's `aruskasneraca` endpoint for exact per-cashbox opening, debit, credit, and closing balances.
+- Remove manual opening-balance inputs and zero-balance fallbacks from Cashbox-tab reports.
+
 ## [1.9.11] - 2026-08-30
 
 ### Fixed
