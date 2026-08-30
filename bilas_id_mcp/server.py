@@ -1,4 +1,4 @@
-"""Bilas.id Clean MCP Server Module (v1.4.0)
+"""Bilas.id Clean MCP Server Module (v1.9.13)
 
 Comprehensive Model Context Protocol (MCP) server for Bilas.id POS & Reporting Platform:
   - Multi-Modal Onboarding (Interactive Playwright GUI, Automated OAuth Bridge, Manual Token Paste, Env Vars)
@@ -30,16 +30,32 @@ USER_HOME = Path.home()
 CONFIG_DIR = USER_HOME / ".bilas_id"
 STATE_FILE = CONFIG_DIR / "token_state.json"
 
-# Default fallbacks
-APP_TOKENS = {
-    "x-access-token": "sjgyfne73592643gedudney3628465hgrdt",
-    "x-access-web-token": "UD1P6jZ0XKErPm5hQ4dKSXu5MQv6h8oOGeT78CVpXXAxC7H4LrtEZtj2BnwHKKcnuLfRtZYvne3Qlb2aUVg",
+# Public application headers are optional; credentials always come from the user session.
+APP_TOKENS = {key: value for key, value in {
+    "x-access-token": os.environ.get("BILAS_ACCESS_TOKEN", ""),
+    "x-access-web-token": os.environ.get("BILAS_WEB_TOKEN", ""),
     "Content-Type": "application/json",
-}
+}.items() if value}
 
 ARUSKAS_URL = "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/aruskas"
 ARUSKAS_NERACA_URL = "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/aruskasneraca"
 PEMINDAHAN_URL = "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pemindahansaldo"
+REPORT_ENDPOINTS = {
+ "ringkasan_outlet": "https://laporan.apibilas.com/v1/laporanoutlet/ringkasan",
+ "pendapatan_transaksi": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/transaksi",
+ "topup_paket": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/topuppaket",
+ "topup_deposit": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/topupdeposit",
+ "self_service_income": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/selfservice",
+ "other_income": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/lainnya",
+ "piutang": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/piutang",
+ "pembulatan": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pembulatan",
+ "merchant_fees": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/merchantfee",
+ "customer_growth": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/pertumbuhan",
+ "top_customers": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/top",
+ "package_quota": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/kuotapaket",
+ "deposit_balance": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/saldodeposit",
+ "kasbon_history": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/kasbon",
+}
 
 def ensure_config_dir():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -458,9 +474,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.9.11",
+    version="1.9.13",
     description=(
-        "Bilas.id MCP Server v1.9.6 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.13 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -471,6 +487,120 @@ mcp = MCPServer(
         "Write tools (use with care): bilas_add_expense, bilas_delete_expense"
     )
 )
+
+# ---------------------------------------------------------------------------
+# Shared authenticated dashboard report helpers
+# ---------------------------------------------------------------------------
+def _validate_report_dates(tgl_awal: str, tgl_akhir: str):
+    """Validate dashboard dates in YYYY/MM/DD format and ordering."""
+    fmt = "%Y/%m/%d"
+    try:
+        start, end = datetime.strptime(str(tgl_awal), fmt), datetime.strptime(str(tgl_akhir), fmt)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Dates must use YYYY/MM/DD format and contain valid calendar dates") from exc
+    if start > end:
+        raise ValueError("tgl_awal must not be later than tgl_akhir")
+    return start.strftime(fmt), end.strftime(fmt)
+
+def _post_report(report_name: str, tgl_awal: str, tgl_akhir: str):
+    """POST an authenticated report while preserving raw response and metadata."""
+    start, end = _validate_report_dates(tgl_awal, tgl_akhir)
+    headers, state = get_valid_headers()
+    request_id = str(uuid.uuid4())
+    body = {"id": state["outlet_id"], "tgl_awal": start, "tgl_akhir": end, "req_id": request_id}
+    url = REPORT_ENDPOINTS[report_name]
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            raw, status_code = json.loads(response.read().decode("utf-8")), response.status
+        return {"status": "success", "api_response": raw, "normalized_metadata": {
+            "report": report_name, "endpoint": url, "outlet_id": state["outlet_id"],
+            "period": {"tgl_awal": start, "tgl_akhir": end}, "request_id": request_id,
+            "http_status": status_code}}
+    except urllib.error.HTTPError as exc:
+        return {"status": "error", "message": "Bilas report request failed", "http_code": exc.code,
+                "normalized_metadata": {"report": report_name, "endpoint": url, "request_id": request_id}}
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return {"status": "error", "message": "Bilas report could not be retrieved",
+                "normalized_metadata": {"report": report_name, "endpoint": url, "request_id": request_id}}
+
+def _report_tool(report_name, tgl_awal, tgl_akhir):
+    try:
+        result = _post_report(report_name, tgl_awal, tgl_akhir)
+    except (PermissionError, ValueError) as exc:
+        result = {"status": "error", "message": str(exc)}
+    return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+@mcp.tool()
+def bilas_get_ringkasan_outlet(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Ringkasan Outlet report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("ringkasan_outlet", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_pendapatan_transaksi(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Pendapatan Transaksi/Omzet report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("pendapatan_transaksi", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_topup_paket(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Topup Paket report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("topup_paket", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_topup_deposit(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Topup Deposit report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("topup_deposit", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_self_service_income(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Self-service income report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("self_service_income", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_other_income(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Other income report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("other_income", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_piutang(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Piutang report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("piutang", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_pembulatan(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Pembulatan report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("pembulatan", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_merchant_fees(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Merchant fees report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("merchant_fees", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_customer_growth(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Customer growth report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("customer_growth", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_top_customers(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Top customers report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("top_customers", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_package_quota(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Package quota report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("package_quota", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_deposit_balance(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Deposit balance report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("deposit_balance", tgl_awal, tgl_akhir)
+
+@mcp.tool()
+def bilas_get_kasbon_history(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Kasbon history report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return _report_tool("kasbon_history", tgl_awal, tgl_akhir)
 
 # ---------------------------------------------------------------------------
 # 1. AUTH & ONBOARDING TOOLS
@@ -1213,7 +1343,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.6\n"
+            "\n  Bilas.id MCP Server v1.9.13\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"
