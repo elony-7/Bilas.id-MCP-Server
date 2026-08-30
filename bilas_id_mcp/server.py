@@ -946,14 +946,28 @@ def bilas_revert_item_stage(transaction_id: str, status_pengerjaan: str, item_in
     if not target or not current: return json.dumps({"status":"error", "message":"Use a recognized earlier stage: Antrian, Cuci, Pengeringan, Setrika, or Selesai."}, indent=2)
     if target[1] >= current[1]: return json.dumps({"status":"error", "message":"This tool only moves backward; use bilas_update_order_status for forward transitions.", "current_stage":current[0], "requested_stage":target[0]}, indent=2)
     uid = item.get("uid") or item.get("original_uid")
-    payload = {"id":outlet_id,"id_outlet":outlet_id,"id_transaksi":transaction_id,"uid":uid,
-      "id_paket":item.get("id_paket",""),"id_layanan":item.get("id_layanan",""),"proses":target[0],
-      "dicuci":item.get("dicuci",""),"dicuci_nama":item.get("dicuci_nama",""),
-      "dikeringkan":item.get("dikeringkan",""),"dikeringkan_nama":item.get("dikeringkan_nama",""),
-      "disetrika":item.get("disetrika",""),"disetrika_nama":item.get("disetrika_nama",""),
-      "diselesaikan":item.get("diselesaikan",""),"diselesaikan_nama":item.get("diselesaikan_nama",""),
-      "diambilkan":item.get("diambilkan",""),"diambilkan_nama":item.get("diambilkan_nama",""),
-      "id_operator":user_id,"nama_operator":operator_name,"keterangan":notes}
+    # Koreksi/Riwayat submits this exact detail schema through the shared
+    # production.update client. Keep the existing station assignments: the
+    # dashboard's form sends them back unchanged when only `proses` is edited.
+    # Clearing them here changes the request semantics and causes the backend
+    # to acknowledge without applying the correction.
+    payload = {
+        "uid": uid,
+        "id_transaksi": transaction_id,
+        "id_paket": item.get("id_paket", ""),
+        "id_layanan": item.get("id_layanan", ""),
+        "proses": target[0],
+        "dicuci": item.get("dicuci", ""),
+        "dicuci_nama": item.get("dicuci_nama", ""),
+        "dikeringkan": item.get("dikeringkan", ""),
+        "dikeringkan_nama": item.get("dikeringkan_nama", ""),
+        "disetrika": item.get("disetrika", ""),
+        "disetrika_nama": item.get("disetrika_nama", ""),
+        "diselesaikan": item.get("diselesaikan", ""),
+        "diselesaikan_nama": item.get("diselesaikan_nama", ""),
+        "diambilkan": item.get("diambilkan", ""),
+        "diambilkan_nama": item.get("diambilkan_nama", ""),
+    }
     req = urllib.request.Request("https://apiweb.bilas.id/web/transaksi/produksi/update", data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
     try:
         api = _production_response(urllib.request.urlopen(req, timeout=15))
