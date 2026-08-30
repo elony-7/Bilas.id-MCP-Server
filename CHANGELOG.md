@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.9] - 2026-08-30
+
+### Fixed
+- Include all required `waktu_*` timestamp fields in flat forward and backward production payloads.
+- Preserve existing correction timestamps and normalize missing or serialized `None` values to empty strings.
+
 ## [1.9.8] - 2026-08-30
 
 ### Fixed

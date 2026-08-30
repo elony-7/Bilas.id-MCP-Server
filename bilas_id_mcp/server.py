@@ -885,6 +885,12 @@ def bilas_update_order_status(
                 "diselesaikan_nama": item.get("diselesaikan_nama", ""),
                 "diambilkan": item.get("diambilkan", ""),
                 "diambilkan_nama": item.get("diambilkan_nama", ""),
+                # Bilas validates the complete production detail schema.
+                "waktu_cuci": now_ts if stage_norm in ("cuci", "pencucian") else "",
+                "waktu_kering": now_ts if stage_norm in ("kering", "pengeringan") else "",
+                "waktu_setrika": now_ts if stage_norm in ("setrika", "ironing") else "",
+                "waktu_selesai": now_ts if stage_norm in ("selesai", "finish") else "",
+                "waktu_diambil": now_ts if stage_norm in ("ambil", "siap ambil") else "",
             }
             req = urllib.request.Request(target_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
             api_responses.append(_production_response(urllib.request.urlopen(req, timeout=15)))
@@ -992,6 +998,13 @@ def bilas_revert_item_stage(transaction_id: str, status_pengerjaan: str, item_in
         "diselesaikan_nama": item.get("diselesaikan_nama", ""),
         "diambilkan": item.get("diambilkan", ""),
         "diambilkan_nama": item.get("diambilkan_nama", ""),
+        # Keep every timestamp present: the endpoint requires these keys even
+        # when a station has no timestamp yet.
+        "waktu_cuci": "" if item.get("waktu_cuci") in (None, "None") else str(item.get("waktu_cuci", "")),
+        "waktu_kering": "" if item.get("waktu_kering") in (None, "None") else str(item.get("waktu_kering", "")),
+        "waktu_setrika": "" if item.get("waktu_setrika") in (None, "None") else str(item.get("waktu_setrika", "")),
+        "waktu_selesai": "" if item.get("waktu_selesai") in (None, "None") else str(item.get("waktu_selesai", "")),
+        "waktu_diambil": "" if item.get("waktu_diambil") in (None, "None") else str(item.get("waktu_diambil", "")),
     }
     req = urllib.request.Request("https://apiweb.bilas.id/web/transaksi/produksi/update", data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
     try:
