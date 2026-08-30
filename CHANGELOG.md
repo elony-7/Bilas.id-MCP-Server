@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.9.1] - 2026-08-30
+
+### Changed / Performance Fix
+- **Native Fast Customer Directory (`bilas_list_customers`)**: Replaced slow full-order transaction table scan with Bilas native dedicated customer profile endpoint (`/web/pelanggan/list`). Execution time drops from ~25s to **< 0.6s**.
+
 ## [1.9.0] - 2026-08-30
 
 ### Added

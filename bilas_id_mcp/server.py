@@ -457,9 +457,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.9.0",
+    version="1.9.1",
     description=(
-        "Bilas.id MCP Server v1.9.0 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.1 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -885,48 +885,50 @@ def bilas_create_order(
 
 @mcp.tool()
 def bilas_list_customers(search_query: str = "", limit: int = 20) -> str:
-    """List and search customer profiles and their lifetime transaction summary."""
+    """List and search registered customer profiles (Fast native directory with name, phone, email, gender, registration date)."""
     headers, st = get_valid_headers()
     outlet_id = st.get("outlet_id", "")
     
-    q = urllib.parse.quote(search_query, safe="")
-    url = f"https://apiweb.bilas.id/web/transaksi/reguler/all?id={outlet_id}&page=1&limit=100&search={q}"
-    req = urllib.request.Request(url, headers=headers, method="GET")
+    url = "https://apiweb.bilas.id/web/pelanggan/list"
+    payload = {"id": outlet_id}
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
     try:
         resp = urllib.request.urlopen(req, timeout=15)
         raw_res = json.loads(resp.read().decode("utf-8"))
-        tx_list = raw_res.get("result", {}).get("list", [])
+        customer_list = raw_res.get("result", [])
         
-        customers = {}
-        for tx in tx_list:
-            c_name = tx.get("nama_pelanggan") or "Guest/Walk-in"
-            c_hp = tx.get("hp") or tx.get("nomor_hp") or "-"
-            c_id = tx.get("id_pelanggan") or c_hp
-            
-            if c_id not in customers:
-                customers[c_id] = {
-                    "customer_id": c_id,
-                    "name": c_name,
-                    "phone": c_hp,
-                    "total_orders": 0,
-                    "total_spent": 0,
-                    "last_order_date": tx.get("waktu_antrian") or tx.get("update_date")
-                }
-            
-            customers[c_id]["total_orders"] += 1
-            customers[c_id]["total_spent"] += tx.get("total_harga", 0)
-        
-        c_list = sorted(list(customers.values()), key=lambda x: x["total_orders"], reverse=True)[:limit]
+        # Filter if search_query is provided
+        q = search_query.strip().lower()
+        if q:
+            filtered = [
+                c for c in customer_list
+                if q in str(c.get("nama", "")).lower()
+                or q in str(c.get("hp", "")).lower()
+                or q in str(c.get("email", "")).lower()
+            ]
+        else:
+            filtered = customer_list
+
+        simplified = []
+        for c in filtered[:limit]:
+            simplified.append({
+                "customer_id": c.get("id"),
+                "name": c.get("nama"),
+                "phone": c.get("hp"),
+                "email": c.get("email") or "-",
+                "gender": c.get("gender") or "-",
+                "registered_at": c.get("tgl_register"),
+                "address": c.get("alamat") or "-"
+            })
+
         return json.dumps({
             "status": "success",
-            "total_customers_found": len(customers),
-            "customers": c_list
+            "total_registered": len(customer_list),
+            "matched_count": len(filtered),
+            "customers": simplified
         }, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
-
-
-
 
 @mcp.tool()
 def bilas_get_order_details(transaction_id: str) -> str:
@@ -1027,7 +1029,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.0\n"
+            "\n  Bilas.id MCP Server v1.9.1\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"
