@@ -457,9 +457,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.9.4",
+    version="1.9.6",
     description=(
-        "Bilas.id MCP Server v1.9.4 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.6 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -771,6 +771,7 @@ def bilas_update_order_status(
         return json.dumps({"status": "error", "message": "Order not found or has no detail items"}, indent=2)
 
     updated_items = []
+    expected_items = []
     target_url = "https://apiweb.bilas.id/web/transaksi/produksi/update"
 
     # Map stage name to the field prefix used in the detail item
@@ -788,6 +789,11 @@ def bilas_update_order_status(
     }
 
     operator_field, time_field = stage_to_field.get(stage_norm, (None, None))
+    if stage_norm in ("cuci", "pencucian"): target_stage = "Cuci"
+    elif stage_norm in ("kering", "pengeringan"): target_stage = "Pengeringan"
+    elif stage_norm in ("setrika", "ironing"): target_stage = "Setrika"
+    elif stage_norm in ("ambil", "siap ambil"): target_stage = "Siap Ambil"
+    elif stage_norm in ("selesai", "finish"): target_stage = "Selesai"
 
     for idx, item in enumerate(items, 1):
         # Filter if item_index or item_name specified
@@ -822,13 +828,13 @@ def bilas_update_order_status(
         item["keterangan"] = notes or item.get("keterangan", "")
         if machine_name:
             item["mesin"] = machine_name
+        expected_items.append({"item_index": idx, "item_name": item_title, "uid": item.get("uid") or item.get("original_uid"), "target_stage": target_stage})
 
-    # Update top-level order status
-    raw_order["status_pengerjaan"] = target_stage
+    # Preserve the top-level order status; this endpoint persists detail mutations.
     raw_order["update_date"] = now_ts
 
     # 3. Send via /web/transaksi/produksi/update
-    first_item = items[0] if items else {}
+    first_item = next((item for idx, item in enumerate(items, 1) if any(x.get("item_index") == idx and x.get("status") == "attempted" for x in updated_items)), items[0] if items else {})
     payload = {
         "id": outlet_id,
         "id_transaksi": transaction_id,
@@ -850,14 +856,26 @@ def bilas_update_order_status(
             except Exception:
                 res_data = {"status": "processed", "raw_response": raw_text}
 
+        # Bilas can acknowledge a request while discarding the mutation. Verify detail state.
+        try:
+            verified_order = _fetch_order_detail(transaction_id, headers)
+            verification = _verify_production_items(verified_order, expected_items)
+        except Exception as e:
+            return json.dumps({"status": "verification_failed", "transaction_id": transaction_id,
+                "target_stage": target_stage, "api_response": res_data,
+                "items_targeted": updated_items,
+                "message": "API acknowledged the update, but verification failed: " + str(e)}, indent=2)
+        persisted = sum(1 for row in verification if row["persisted"])
+        final_status = "success" if persisted == len(verification) else "not_persisted" if persisted == 0 else "partial"
         return json.dumps({
-            "status": "success",
+            "status": final_status,
             "transaction_id": transaction_id,
             "target_stage": target_stage,
             "endpoint": target_url,
             "api_response": res_data,
             "items_targeted": updated_items,
-            "note": "Bilas production update accepted. Server-side logging of the stage transition is recorded."
+            "verification": verification,
+            "note": "Success means the selected detail item was re-fetched and persisted."
         }, indent=2, ensure_ascii=False)
     except urllib.error.HTTPError as e:
         err_body = e.read().decode("utf-8", errors="ignore").strip()
@@ -875,6 +893,75 @@ def bilas_update_order_status(
         }, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e), "items_targeted": updated_items}, indent=2, ensure_ascii=False)
+
+def _production_response(resp):
+    raw = resp.read().decode("utf-8", errors="ignore").strip()
+    if not raw or raw == "undefined": return {"status":"success","message":"Server acknowledged with empty body"}
+    try: return json.loads(raw)
+    except Exception: return {"status":"processed","raw_response":raw}
+
+def _fetch_order_detail(transaction_id, headers):
+    req = urllib.request.Request("https://apiweb.bilas.id/web/transaksi/reguler/detail",
+        data=json.dumps({"id": transaction_id}).encode("utf-8"), headers=headers, method="POST")
+    raw = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", errors="ignore").strip()
+    if not raw or raw == "undefined": return {}
+    return json.loads(raw).get("result", {}) or {}
+
+
+def _verify_production_items(order, expected_items):
+    actual = (order or {}).get("detail", [])
+    rows = []
+    for expected in expected_items:
+        found = next((item for item in actual if expected.get("uid") and
+            (item.get("uid") == expected["uid"] or item.get("original_uid") == expected["uid"])), None)
+        if found is None and 0 < expected["item_index"] <= len(actual): found = actual[expected["item_index"] - 1]
+        observed = found.get("proses") if found else None
+        rows.append({"item_index": expected["item_index"], "item_name": expected["item_name"],
+            "uid": expected.get("uid"), "expected_stage": expected["target_stage"],
+            "observed_stage": observed, "persisted": observed == expected["target_stage"]})
+    return rows
+
+
+@mcp.tool()
+def bilas_revert_item_stage(transaction_id: str, status_pengerjaan: str, item_index: int = 0,
+                             item_name: str = "", operator_name: str = "Ele", notes: str = "") -> str:
+    """Move exactly one detail item backward through Koreksi/Riwayat and verify persistence.
+    Pass item_index or an unambiguous item_name. Forward destinations are rejected.
+    """
+    headers, st = get_valid_headers()
+    outlet_id = st.get("outlet_id", "")
+    user_id = st.get("user_id") or jwt_decode_payload(st.get("jwt")).get("id")
+    try: order = _fetch_order_detail(transaction_id, headers)
+    except Exception as e: return json.dumps({"status":"error", "message":str(e)}, indent=2)
+    items = order.get("detail", [])
+    needle = (item_name or "").strip().lower()
+    selected = [(i, x) for i, x in enumerate(items, 1)
+        if (not item_index or i == item_index) and (not needle or needle in ((x.get("nama_layanan","")+" "+x.get("nama_paket","")).lower()))]
+    if not item_index and not needle: return json.dumps({"status":"error", "message":"Pass item_index or item_name for a backward correction."}, indent=2)
+    if not selected: return json.dumps({"status":"error", "message":"No matching detail item found."}, indent=2)
+    if len(selected) > 1: return json.dumps({"status":"error", "message":"Item name matched multiple detail rows; use item_index."}, indent=2)
+    idx, item = selected[0]
+    names = {"antrian":("Antrian",0),"cuci":("Cuci",1),"pencucian":("Cuci",1),"kering":("Pengeringan",2),"pengeringan":("Pengeringan",2),"setrika":("Setrika",3),"ironing":("Setrika",3),"selesai":("Selesai",4),"packing":("Selesai",4)}
+    target = names.get((status_pengerjaan or "").strip().lower()); current = names.get(str(item.get("proses","")).strip().lower())
+    if not target or not current: return json.dumps({"status":"error", "message":"Use a recognized earlier stage: Antrian, Cuci, Pengeringan, Setrika, or Selesai."}, indent=2)
+    if target[1] >= current[1]: return json.dumps({"status":"error", "message":"This tool only moves backward; use bilas_update_order_status for forward transitions.", "current_stage":current[0], "requested_stage":target[0]}, indent=2)
+    uid = item.get("uid") or item.get("original_uid")
+    payload = {"id":outlet_id,"id_outlet":outlet_id,"id_transaksi":transaction_id,"uid":uid,
+      "id_paket":item.get("id_paket",""),"id_layanan":item.get("id_layanan",""),"proses":target[0],
+      "dicuci":item.get("dicuci",""),"dicuci_nama":item.get("dicuci_nama",""),
+      "dikeringkan":item.get("dikeringkan",""),"dikeringkan_nama":item.get("dikeringkan_nama",""),
+      "disetrika":item.get("disetrika",""),"disetrika_nama":item.get("disetrika_nama",""),
+      "diselesaikan":item.get("diselesaikan",""),"diselesaikan_nama":item.get("diselesaikan_nama",""),
+      "diambilkan":item.get("diambilkan",""),"diambilkan_nama":item.get("diambilkan_nama",""),
+      "id_operator":user_id,"nama_operator":operator_name,"keterangan":notes}
+    req = urllib.request.Request("https://apiweb.bilas.id/web/transaksi/produksi/update", data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    try:
+        api = _production_response(urllib.request.urlopen(req, timeout=15))
+        verification = _verify_production_items(_fetch_order_detail(transaction_id, headers), [{"item_index":idx,"item_name":item.get("nama_layanan",""),"uid":uid,"target_stage":target[0]}])
+        return json.dumps({"status":"success" if verification[0]["persisted"] else "not_persisted","transaction_id":transaction_id,"from_stage":current[0],"target_stage":target[0],"api_response":api,"verification":verification}, indent=2, ensure_ascii=False)
+    except urllib.error.HTTPError as e: return json.dumps({"status":"error","http_code":e.code,"error":e.read().decode("utf-8",errors="ignore")}, indent=2)
+    except Exception as e: return json.dumps({"status":"error","message":str(e)}, indent=2)
+
 
 @mcp.tool()
 def bilas_get_live_cashbox_balances(tgl_awal: str = "2026/08/01", tgl_akhir: str = "2026/08/30") -> str:
@@ -1134,7 +1221,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.4\n"
+            "\n  Bilas.id MCP Server v1.9.6\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"

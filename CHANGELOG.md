@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.6] - 2026-08-30
+
+### Release
+- Packaged the verified production update and backward-stage correction tools as the v1.9.6 release.
+
+## [1.9.5] - 2026-08-30
+
+### Fixed
+- Preserve top-level order status during detail updates and verify mutations after API acknowledgement.
+
+### Added
+- Added `bilas_revert_item_stage` for one-item backward production corrections using the dashboard Koreksi/Riwayat payload.
+
+
 ## [1.9.4] - 2026-08-30
 
 ### Fixed

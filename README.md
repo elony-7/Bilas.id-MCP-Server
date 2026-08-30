@@ -1,4 +1,4 @@
-# Bilas.id MCP Server (v1.9.0)
+# Bilas.id MCP Server (v1.9.6)
 
 Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 
@@ -47,7 +47,8 @@ bilas-mcp --token "eyJhbGci..." --outlet "2cvnOPoOgK9uZBQCc40c"
 ### 3. 🧾 Orders & Production Pipeline
 - `bilas_get_order_details`: Fetches full line-by-line item breakdown (*Detail Layanan*, package name, service item, weight/quantity in Kg/Satuan, unit price, total price, perfume, notes, and photos).
 - `bilas_list_orders_by_status`: Queries and filters active orders directly by production stage (*Antrian*, *Proses*, *Setrika*, *Siap Ambil*, *Selesai*, or `all`).
-- `bilas_update_order_status`: Updates order production stage, assigns operator, smart machine, or progress notes.
+- `bilas_update_order_status`: Updates selected production items forward and verifies persistence by re-fetching the order.
+- `bilas_revert_item_stage`: Corrects one detail item backward to an earlier production stage using the dashboard Koreksi/Riwayat payload, then verifies persistence.
 - `bilas_create_order`: Creates new regular laundry transactions with customer information, service items, and payment method.
 - `bilas_search_invoice`: Look up customer orders by Nota Number (`TRX/...`), Customer Name, or Phone Number with pagination.
 - `bilas_get_production_summary`: Fetches real-time production stage counters (*Antrian*, *Proses*, *Siap Ambil*, *Siap Antar*, *Konfirmasi*, *Validasi*).
