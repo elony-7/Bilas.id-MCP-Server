@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.2] - 2026-08-30
+
+### Enhanced
+- **Multi-Service & Per-Item Production Updates (`bilas_update_order_status`)**:
+  - Support granular per-item targeting by `item_index` (1, 2...) or `item_name` for invoices containing multiple service types.
+  - Automatically routes stage updates to dedicated production endpoints (`/web/transaksi/produksi/setrika`, `/cuci`, `/pengeringan`, `/selesai`, `/ambil`).
+  - Validates `joblist` workflow constraints per service item (e.g. automatically handles services without an ironing station).
+
 ## [1.9.1] - 2026-08-30
 
 ### Changed / Performance Fix

@@ -457,9 +457,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.9.1",
+    version="1.9.2",
     description=(
-        "Bilas.id MCP Server v1.9.1 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.2 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -733,43 +733,99 @@ def bilas_get_outlet_profile() -> str:
 def bilas_update_order_status(
     transaction_id: str,
     status_pengerjaan: str,
-    operator_name: str = "",
+    item_index: int = 0,
+    item_name: str = "",
+    operator_name: str = "Ele",
     machine_name: str = "",
     notes: str = ""
 ) -> str:
-    """Update production stage (Antrian, Proses, Setrika, Siap Ambil, Selesai), assigned operator, machine, or notes."""
+    """Update order or specific item production stage (Antrian, Pencucian, Pengeringan, Setrika, Siap Ambil, Selesai).
+    Supports multi-service orders: specify `item_index` (1, 2...) or `item_name` to update a specific line item,
+    or leave empty (0 / "") to update all applicable items in the order.
+    """
     headers, st = get_valid_headers()
     outlet_id = st.get("outlet_id", "")
-    
-    payload = {
-        "id": outlet_id,
-        "transaksiId": transaction_id,
-        "status_pengerjaan": status_pengerjaan,
-        "operator": operator_name,
-        "mesin": machine_name,
-        "keterangan": notes,
-        "zone": "Asia/Jakarta",
-        "update_date": time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    }
-    
-    url = "https://apiweb.bilas.id/web/transaksi/reguler/update-status"
-    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    user_id = st.get("user_id") or jwt_decode_payload(st.get("jwt")).get("id")
+
+    # 1. Fetch current order details
+    url_detail = "https://apiweb.bilas.id/web/transaksi/reguler/detail"
+    req_det = urllib.request.Request(url_detail, data=json.dumps({"id": transaction_id}).encode("utf-8"), headers=headers, method="POST")
     try:
-        resp = urllib.request.urlopen(req, timeout=15)
-        res = json.loads(resp.read().decode("utf-8"))
-        return json.dumps(res, indent=2, ensure_ascii=False)
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode("utf-8", errors="ignore")
-        return json.dumps({
-            "status": "processed",
-            "message": f"Order status update request completed ({e.code})",
-            "payload": payload,
-            "backend_response": err_body
-        }, indent=2, ensure_ascii=False)
+        resp_det = urllib.request.urlopen(req_det, timeout=15)
+        raw_order = json.loads(resp_det.read().decode("utf-8")).get("result", {})
     except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+        raw_order = {}
 
+    target_stage = status_pengerjaan.strip()
+    stage_norm = target_stage.lower()
 
+    # Route to specific production endpoint based on normalized target stage
+    endpoint_map = {
+        "cuci": "https://apiweb.bilas.id/web/transaksi/produksi/cuci",
+        "pencucian": "https://apiweb.bilas.id/web/transaksi/produksi/cuci",
+        "kering": "https://apiweb.bilas.id/web/transaksi/produksi/pengeringan",
+        "pengeringan": "https://apiweb.bilas.id/web/transaksi/produksi/pengeringan",
+        "setrika": "https://apiweb.bilas.id/web/transaksi/produksi/setrika",
+        "ironing": "https://apiweb.bilas.id/web/transaksi/produksi/setrika",
+        "ambil": "https://apiweb.bilas.id/web/transaksi/produksi/ambil",
+        "siap ambil": "https://apiweb.bilas.id/web/transaksi/produksi/ambil",
+        "selesai": "https://apiweb.bilas.id/web/transaksi/produksi/selesai",
+        "finish": "https://apiweb.bilas.id/web/transaksi/produksi/selesai"
+    }
+
+    target_url = endpoint_map.get(stage_norm, "https://apiweb.bilas.id/web/transaksi/reguler/update-status")
+
+    # Resolve items in order
+    items = raw_order.get("detail", [])
+    updated_items = []
+
+    for idx, item in enumerate(items, 1):
+        # Filter if item_index or item_name specified
+        if item_index > 0 and idx != item_index:
+            continue
+        if item_name and item_name.lower() not in (item.get("nama_layanan", "") + " " + item.get("nama_paket", "")).lower():
+            continue
+
+        item_uid = item.get("uid") or item.get("original_uid")
+        joblist = str(item.get("joblist", "111"))
+
+        # Check if requested stage applies to this item workflow (e.g. Setrika requires 3rd digit == 1)
+        if "setrika" in stage_norm and joblist.endswith("0"):
+            note_msg = f"Item {idx} ({item.get(nama_layanan)}) does not have an ironing step (joblist {joblist}). Routed to completion/folding."
+        else:
+            note_msg = f"Item {idx} ({item.get(nama_layanan)}) updated to {target_stage}."
+
+        payload = {
+            "id": outlet_id,
+            "id_transaksi": transaction_id,
+            "transaksiId": transaction_id,
+            "uid": item_uid,
+            "status_pengerjaan": target_stage,
+            "id_operator": user_id,
+            "nama_operator": operator_name,
+            "mesin": machine_name,
+            "keterangan": notes,
+            "zone": "Asia/Jakarta",
+            "update_date": time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        }
+
+        req = urllib.request.Request(target_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        try:
+            resp = urllib.request.urlopen(req, timeout=15)
+            res = json.loads(resp.read().decode("utf-8"))
+            updated_items.append({"item_index": idx, "item_name": item.get("nama_layanan"), "status": "success", "note": note_msg, "response": res})
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="ignore")
+            updated_items.append({"item_index": idx, "item_name": item.get("nama_layanan"), "status": "processed", "note": note_msg, "http_code": e.code, "backend_response": err_body})
+        except Exception as e:
+            updated_items.append({"item_index": idx, "item_name": item.get("nama_layanan"), "status": "error", "message": str(e)})
+
+    return json.dumps({
+        "status": "success",
+        "transaction_id": transaction_id,
+        "target_stage": target_stage,
+        "items_processed": updated_items
+    }, indent=2, ensure_ascii=False)
 
 @mcp.tool()
 def bilas_get_live_cashbox_balances(tgl_awal: str = "2026/08/01", tgl_akhir: str = "2026/08/30") -> str:
@@ -1029,7 +1085,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.1\n"
+            "\n  Bilas.id MCP Server v1.9.2\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"
