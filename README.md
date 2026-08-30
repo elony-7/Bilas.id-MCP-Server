@@ -1,4 +1,4 @@
-# Bilas.id MCP Server (v1.9.12)
+# Bilas.id MCP Server (v1.9.13)
 
 Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 
@@ -59,6 +59,30 @@ bilas-mcp --token "eyJhbGci..." --outlet "2cvnOPoOgK9uZBQCc40c"
 
 ### 5. ⚙️ Outlet Profile & Settings
 - `bilas_get_outlet_profile`: Fetches business details, address, location coordinates, and store configurations.
+
+### 6. 📈 Dashboard Reports (read-only)
+- `bilas_get_ringkasan_outlet` — Outlet summary (Ringkasan Outlet).
+- `bilas_get_pendapatan_transaksi` — Transaction income / Omzet (Pendapatan Transaksi).
+- `bilas_get_topup_paket` — Topup Paket income.
+- `bilas_get_topup_deposit` — Topup Deposit / e-money income.
+- `bilas_get_self_service_income` — Self-service income.
+- `bilas_get_other_income` — Other income.
+- `bilas_get_piutang` — Kasbon & Piutang report.
+- `bilas_get_pembulatan` — Pembulatan (rounding) report.
+- `bilas_get_merchant_fees` — Biaya Layanan / merchant fees.
+
+### 7. 👥 Pelanggan (read-only)
+- `bilas_get_customer_growth` — Customer growth (Pertumbuhan Pelanggan).
+- `bilas_get_top_customers` — Top customers by spend.
+- `bilas_get_package_quota` — Remaining package quota per customer.
+- `bilas_get_deposit_balance` — Customer deposit / e-money balances.
+- `bilas_get_kasbon_history` — Customer kasbon history.
+
+All dashboard report tools:
+- Accept `tgl_awal` and `tgl_akhir` in `YYYY/MM/DD` format.
+- Validate date format and ordering locally before any network call.
+- Return the raw Bilas response and a `normalized_metadata` block with the
+  source endpoint, period, request_id, outlet_id, and HTTP status.
 
 ---
 

@@ -23,6 +23,7 @@ import uuid
 import http.server
 import socketserver
 import threading
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -494,12 +495,15 @@ mcp = MCPServer(
 def _validate_report_dates(tgl_awal: str, tgl_akhir: str):
     """Validate dashboard dates in YYYY/MM/DD format and ordering."""
     fmt = "%Y/%m/%d"
+    pattern = re.compile(r"^\d{4}/\d{2}/\d{2}$")
+    if not (pattern.match(str(tgl_awal)) and pattern.match(str(tgl_akhir))):
+        raise ValueError("invalid date format: use YYYY/MM/DD (e.g. 2026/08/30)")
     try:
         start, end = datetime.strptime(str(tgl_awal), fmt), datetime.strptime(str(tgl_akhir), fmt)
     except (TypeError, ValueError) as exc:
-        raise ValueError("Dates must use YYYY/MM/DD format and contain valid calendar dates") from exc
+        raise ValueError("invalid date range: dates must be valid calendar dates in YYYY/MM/DD") from exc
     if start > end:
-        raise ValueError("tgl_awal must not be later than tgl_akhir")
+        raise ValueError("invalid date range: tgl_awal must not be later than tgl_akhir")
     return start.strftime(fmt), end.strftime(fmt)
 
 def _post_report(report_name: str, tgl_awal: str, tgl_akhir: str):
@@ -649,9 +653,13 @@ def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str) -> str:
     server-side. This uses ``aruskasneraca`` rather than reconstructing rows
     from transaction-level Arus Kas data.
     """
+    try:
+        start, end = _validate_report_dates(tgl_awal, tgl_akhir)
+    except ValueError as exc:
+        return json.dumps({"status": "error", "message": str(exc)}, indent=2, ensure_ascii=False)
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
-    body = {"id": outlet_id, "tgl_awal": tgl_awal, "tgl_akhir": tgl_akhir, "req_id": str(uuid.uuid4())}
+    body = {"id": outlet_id, "tgl_awal": start, "tgl_akhir": end, "req_id": str(uuid.uuid4())}
     req = urllib.request.Request(ARUSKAS_NERACA_URL, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
     try:
         response = json.loads(urllib.request.urlopen(req, timeout=60).read().decode("utf-8"))
@@ -672,7 +680,7 @@ def bilas_get_cashbox_report(tgl_awal: str, tgl_akhir: str) -> str:
             "kredit": sum(r["kredit"] for r in normalized),
             "saldo_akhir": sum(r["saldo_akhir"] for r in normalized),
         }
-        return json.dumps({"status": "success", "tgl_awal": tgl_awal, "tgl_akhir": tgl_akhir,
+        return json.dumps({"status": "success", "tgl_awal": start, "tgl_akhir": end,
             "rows": normalized, "summary": total, "api_response": response}, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)}, indent=2, ensure_ascii=False)

@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.9.13] - 2026-08-30
+
+### Added
+- 14 read-only dashboard report tools covering the Bilas sidebar matrix:
+  - `bilas_get_ringkasan_outlet` (Ringkasan Outlet)
+  - `bilas_get_pendapatan_transaksi` (Pendapatan Transaksi / Omzet)
+  - `bilas_get_topup_paket` (Topup Paket)
+  - `bilas_get_topup_deposit` (Topup Deposit / e-money)
+  - `bilas_get_self_service_income`
+  - `bilas_get_other_income`
+  - `bilas_get_piutang` (Kasbon & Piutang)
+  - `bilas_get_pembulatan`
+  - `bilas_get_merchant_fees` (Biaya Layanan)
+  - `bilas_get_customer_growth`
+  - `bilas_get_top_customers`
+  - `bilas_get_package_quota`
+  - `bilas_get_deposit_balance`
+  - `bilas_get_kasbon_history`
+- Shared `_validate_report_dates` and `_post_report` helpers that reject
+  malformed or reversed date ranges locally and preserve the raw API response
+  alongside normalized metadata (endpoint, period, request_id, outlet_id,
+  http status). The same validator is now applied to the existing
+  `bilas_get_cashbox_report` path so its input contract matches the rest of
+  the dashboard family.
+- Behavior tests in `tests/test_dashboard_reports.py` covering the date
+  validator, endpoint selection, row normalization, network error contract,
+  and MCP tool registration.
+
+### Security
+- Replaced the previously hardcoded `x-access-token` and `x-access-web-token`
+  defaults in `APP_TOKENS` with optional `BILAS_ACCESS_TOKEN` and
+  `BILAS_WEB_TOKEN` environment variables, restoring the README's "zero
+  hardcoded credentials" guarantee while preserving behavior when those
+  env vars are provided at runtime.
+
 ## [1.9.12] - 2026-08-30
 
 ### Fixed
