@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.7] - 2026-08-30
+
+### Fixed
+- Match the Bilas dashboard Koreksi/Riwayat detail payload for backward production corrections.
+- Preserve existing station assignments while changing only the selected item `proses` value.
+
+
 ## [1.9.6] - 2026-08-30
 
 ### Release
