@@ -824,6 +824,27 @@ def bilas_update_order_status(
         if time_field:
             item[time_field] = now_ts
 
+        # Forward updates use the same flat detail schema as Koreksi/Riwayat.
+        # Clear stations after the requested destination so stale assignments
+        # cannot make the backend reject the new production state.
+        station_fields = [
+            ("dicuci", "dicuci_nama"),
+            ("dikeringkan", "dikeringkan_nama"),
+            ("disetrika", "disetrika_nama"),
+            ("diselesaikan", "diselesaikan_nama"),
+            ("diambilkan", "diambilkan_nama"),
+        ]
+        destination_position = {
+            "cuci": 1, "pencucian": 1, "kering": 2, "pengeringan": 2,
+            "setrika": 3, "ironing": 3, "selesai": 4, "finish": 4,
+            "ambil": 5, "siap ambil": 5,
+        }.get(stage_norm)
+        if destination_position:
+            for position, (value_key, name_key) in enumerate(station_fields, 1):
+                if position > destination_position:
+                    item[value_key] = ""
+                    item[name_key] = ""
+
         item["proses"] = target_stage
         item["keterangan"] = notes or item.get("keterangan", "")
         if machine_name:
@@ -833,36 +854,47 @@ def bilas_update_order_status(
     # Preserve the top-level order status; this endpoint persists detail mutations.
     raw_order["update_date"] = now_ts
 
-    # 3. Send via /web/transaksi/produksi/update
-    first_item = next((item for idx, item in enumerate(items, 1) if any(x.get("item_index") == idx and x.get("status") == "attempted" for x in updated_items)), items[0] if items else {})
-    payload = {
-        "id": outlet_id,
-        "id_transaksi": transaction_id,
-        "dataTransaksi": raw_order,
-        "id_layanan": first_item.get("id_layanan", ""),
-        "id_paket": first_item.get("id_paket", ""),
-        "id_operator": user_id
-    }
+    # 3. Send one flat detail payload per selected item. The endpoint returns
+    # an acknowledgement for the old dataTransaksi wrapper even when it drops
+    # the mutation, so each item must be submitted in the dashboard shape.
+    attempted_items = [x for x in expected_items]
+    if not attempted_items:
+        return json.dumps({
+            "status": "error",
+            "message": "No applicable detail items were selected for update.",
+            "items_targeted": updated_items,
+        }, indent=2, ensure_ascii=False)
 
-    req = urllib.request.Request(target_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    api_responses = []
     try:
-        resp = urllib.request.urlopen(req, timeout=15)
-        raw_text = resp.read().decode("utf-8", errors="ignore").strip()
-        if not raw_text or raw_text == "undefined":
-            res_data = {"status": "success", "message": "Stage updated (server acknowledged)"}
-        else:
-            try:
-                res_data = json.loads(raw_text)
-            except Exception:
-                res_data = {"status": "processed", "raw_response": raw_text}
+        for expected in attempted_items:
+            item = items[expected["item_index"] - 1]
+            payload = {
+                "uid": expected.get("uid"),
+                "id_transaksi": transaction_id,
+                "id_paket": item.get("id_paket", ""),
+                "id_layanan": item.get("id_layanan", ""),
+                "proses": target_stage,
+                "dicuci": item.get("dicuci", ""),
+                "dicuci_nama": item.get("dicuci_nama", ""),
+                "dikeringkan": item.get("dikeringkan", ""),
+                "dikeringkan_nama": item.get("dikeringkan_nama", ""),
+                "disetrika": item.get("disetrika", ""),
+                "disetrika_nama": item.get("disetrika_nama", ""),
+                "diselesaikan": item.get("diselesaikan", ""),
+                "diselesaikan_nama": item.get("diselesaikan_nama", ""),
+                "diambilkan": item.get("diambilkan", ""),
+                "diambilkan_nama": item.get("diambilkan_nama", ""),
+            }
+            req = urllib.request.Request(target_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+            api_responses.append(_production_response(urllib.request.urlopen(req, timeout=15)))
 
-        # Bilas can acknowledge a request while discarding the mutation. Verify detail state.
         try:
             verified_order = _fetch_order_detail(transaction_id, headers)
-            verification = _verify_production_items(verified_order, expected_items)
+            verification = _verify_production_items(verified_order, attempted_items)
         except Exception as e:
             return json.dumps({"status": "verification_failed", "transaction_id": transaction_id,
-                "target_stage": target_stage, "api_response": res_data,
+                "target_stage": target_stage, "api_response": api_responses,
                 "items_targeted": updated_items,
                 "message": "API acknowledged the update, but verification failed: " + str(e)}, indent=2)
         persisted = sum(1 for row in verification if row["persisted"])
@@ -872,25 +904,18 @@ def bilas_update_order_status(
             "transaction_id": transaction_id,
             "target_stage": target_stage,
             "endpoint": target_url,
-            "api_response": res_data,
+            "api_response": api_responses,
             "items_targeted": updated_items,
             "verification": verification,
             "note": "Success means the selected detail item was re-fetched and persisted."
         }, indent=2, ensure_ascii=False)
     except urllib.error.HTTPError as e:
         err_body = e.read().decode("utf-8", errors="ignore").strip()
-        try:
-            parsed_err = json.loads(err_body)
-        except Exception:
-            parsed_err = err_body
-        return json.dumps({
-            "status": "error",
-            "transaction_id": transaction_id,
-            "target_stage": target_stage,
-            "http_code": e.code,
-            "error": parsed_err,
-            "items_targeted": updated_items
-        }, indent=2, ensure_ascii=False)
+        try: parsed_err = json.loads(err_body)
+        except Exception: parsed_err = err_body
+        return json.dumps({"status": "error", "transaction_id": transaction_id,
+            "target_stage": target_stage, "http_code": e.code, "error": parsed_err,
+            "items_targeted": updated_items}, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e), "items_targeted": updated_items}, indent=2, ensure_ascii=False)
 

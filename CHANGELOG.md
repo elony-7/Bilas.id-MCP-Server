@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.8] - 2026-08-30
+
+### Fixed
+- Send forward production updates as flat detail-item payloads matching the dashboard API.
+- Clear later station assignments when advancing an item so stale workflow fields cannot block persistence.
+
 ## [1.9.7] - 2026-08-30
 
 ### Fixed
