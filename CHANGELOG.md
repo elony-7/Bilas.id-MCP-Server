@@ -1,12 +1,18 @@
 # Changelog
 
+## [1.9.0] - 2026-08-30
+
+### Added
+- **Order Item & Service Breakdown (`bilas_get_order_details`)**: Retrieve line-by-line *Detail Layanan* for any transaction (Package/Service name, weight/piece quantity with unit *Kg/Satuan*, unit price, total price, perfume, line item notes, and image URL).
+- **Order Pipeline Status Filtering (`bilas_list_orders_by_status`)**: List and filter active orders directly by production stage (*Antrian*, *Proses*, *Setrika*, *Siap Ambil*, *Selesai*, or *all*).
+
 ## [1.8.0] - 2026-08-30
 
 ### Added
-- **Order Status Updates ()**: Move orders between production stages (*Antrian* → *Proses* → *Setrika* → *Siap Ambil* → *Selesai*) and assign operators, machines, or progress notes.
-- **Real-Time Live Cashbox Balances ()**: Calculate actual current cashbox net balances and inflow/outflow per channel (*Tunai*, *BCA*, *QRIS*) from live ledger entries.
-- **Order Creation ()**: Create new regular laundry transactions directly with customer info, service items, amount, and payment method.
-- **Customer Management ()**: View customer profiles, phone numbers, total order counts, lifetime spend, and last order dates.
+- **Order Status Updates (`bilas_update_order_status`)**: Move orders between production stages (*Antrian* → *Proses* → *Setrika* → *Siap Ambil* → *Selesai*) and assign operators, machines, or progress notes.
+- **Real-Time Live Cashbox Balances (`bilas_get_live_cashbox_balances`)**: Calculate actual current cashbox net balances and inflow/outflow per channel (*Tunai*, *BCA*, *QRIS*) from live ledger entries.
+- **Order Creation (`bilas_create_order`)**: Create new regular laundry transactions directly with customer info, service items, amount, and payment method.
+- **Customer Management (`bilas_list_customers`)**: View customer profiles, phone numbers, total order counts, lifetime spend, and last order dates.
 
 All notable changes to the **Bilas.id MCP Server** project will be documented in this file.
 

@@ -457,9 +457,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.8.0",
+    version="1.9.0",
     description=(
-        "Bilas.id MCP Server v1.8.0 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.0 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -926,11 +926,108 @@ def bilas_list_customers(search_query: str = "", limit: int = 20) -> str:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
 
 
+
+
+@mcp.tool()
+def bilas_get_order_details(transaction_id: str) -> str:
+    """Get comprehensive order breakdown including full Detail Layanan (Service name, package, quantity/weight in Kg/Satuan, unit price, notes, and individual step status)."""
+    headers, st = get_valid_headers()
+    url = "https://apiweb.bilas.id/web/transaksi/reguler/detail"
+    payload = {"id": transaction_id}
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        raw_res = json.loads(resp.read().decode("utf-8"))
+        res = raw_res.get("result", {})
+        if not res:
+            return json.dumps({"status": "not_found", "message": "Order/Transaction not found"}, indent=2)
+
+        items_summary = []
+        for it in res.get("detail", []):
+            nama_layanan_full = f"{it.get('nama_layanan', '')} {it.get('nama_paket', '')}".strip()
+            qty_val = it.get("qty", 0)
+            satuan_val = it.get("satuan", "")
+            qty_str = f"{qty_val} {satuan_val}".strip()
+            
+            items_summary.append({
+                "nama_layanan": nama_layanan_full,
+                "status_pengerjaan": it.get("proses") or res.get("status_pengerjaan", "-"),
+                "keterangan": it.get("keterangan") or "-",
+                "qty": qty_str,
+                "harga_satuan": int(it.get("biaya", 0)) if str(it.get("biaya", 0)).isdigit() else it.get("biaya", 0),
+                "total_harga": it.get("total_detail", 0),
+                "satuan": satuan_val,
+                "image_url": it.get("img_layanan", "")
+            })
+
+        output = {
+            "status": "success",
+            "id": res.get("id"),
+            "no_nota": res.get("no_nota"),
+            "nama_pelanggan": res.get("nama_pelanggan"),
+            "hp": res.get("hp"),
+            "parfum": res.get("parfum", "-"),
+            "status_pengerjaan": res.get("status_pengerjaan"),
+            "status_pembayaran": "Lunas" if res.get("status_pembayaran") else "Belum Lunas",
+            "total_harga": res.get("total_harga", 0),
+            "total_potongan": res.get("total_potongan", 0),
+            "total_tagihan": res.get("total_tagihan") or (res.get("total_harga", 0) - res.get("total_potongan", 0)),
+            "waktu_antrian": res.get("waktu_antrian"),
+            "waktu_estimasi": res.get("waktu_estimasi"),
+            "detail_layanan": items_summary
+        }
+        return json.dumps(output, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+
+
+@mcp.tool()
+def bilas_list_orders_by_status(status_pengerjaan: str = "Antrian", page: int = 1, limit: int = 20) -> str:
+    """List orders filtered by production status (Antrian, Proses, Setrika, Siap Ambil, Selesai, or 'all')."""
+    headers, st = get_valid_headers()
+    outlet_id = st.get("outlet_id", "")
+    url = f"https://apiweb.bilas.id/web/transaksi/reguler/all?id={outlet_id}&page={page}&limit={limit}"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        raw_res = json.loads(resp.read().decode("utf-8"))
+        tx_list = raw_res.get("result", {}).get("list", [])
+        
+        if status_pengerjaan and status_pengerjaan.lower() != "all":
+            filtered = [tx for tx in tx_list if str(tx.get("status_pengerjaan", "")).lower() == status_pengerjaan.lower()]
+        else:
+            filtered = tx_list
+
+        simplified = []
+        for tx in filtered:
+            simplified.append({
+                "id": tx.get("id"),
+                "no_nota": tx.get("no_nota"),
+                "nama_pelanggan": tx.get("nama_pelanggan"),
+                "hp": tx.get("hp"),
+                "parfum": tx.get("parfum", "-"),
+                "status_pengerjaan": tx.get("status_pengerjaan"),
+                "status_pembayaran": "Lunas" if tx.get("status_pembayaran") else "Belum Lunas",
+                "total_tagihan": tx.get("total_tagihan", tx.get("total_harga", 0)),
+                "waktu_antrian": tx.get("waktu_antrian")
+            })
+
+        return json.dumps({
+            "status": "success",
+            "filter_status": status_pengerjaan,
+            "count": len(simplified),
+            "orders": simplified
+        }, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+
 def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.8.0\n"
+            "\n  Bilas.id MCP Server v1.9.0\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"
