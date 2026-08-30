@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.9.15] - 2026-08-30
+
+### Fixed
+- Map the 14 dashboard report tools to the live Bilas endpoints, not the
+  speculative ones captured in the v1.9.13 review. Verified paths:
+  - `pendapatan_transaksi` -> `/v1/laporanoutlet/keuangan/pendapatan`
+  - `topup_paket` -> `/v1/laporanoutlet/keuangan/pendapatanpaket`
+  - `topup_deposit` -> `/v1/laporanoutlet/keuangan/pendapatanemoney`
+  - `self_service_income` -> `/v1/qris/pendapatanselfservice`
+  - `other_income` -> `/v1/laporanoutlet/keuangan/pendapatanlain`
+  - `merchant_fees` -> `/v1/laporanoutlet/keuangan/biayalayanan`
+  - `top_customers` -> `/v1/laporanoutlet/pelanggan/toppelanggan`
+  - `package_quota` -> `/v1/laporanoutlet/pelanggan/sisakuota`
+  - `deposit_balance` -> `/v1/laporanoutlet/pelanggan/sisaemoney`
+  - `kasbon_history` -> `/v1/laporanoutlet/pelanggan/riwayatbon`
+- Send the dashboard's full request body (`pemilik`, `user`, `mode`, `tipe`,
+  `send_data`) — the simple `{id, tgl_awal, tgl_akhir, req_id}` body was
+  being silently dropped. `ringkasan_outlet` additionally expects `id` to
+  be a JSON-encoded array of `{id_outlet, dibuat_tgl}` descriptors.
+- Surface underlying transport error class in error messages instead of
+  returning a generic "could not be retrieved" string.
+
 ## [1.9.14] - 2026-08-30
 
 ### Fixed

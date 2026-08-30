@@ -1,4 +1,4 @@
-"""Bilas.id Clean MCP Server Module (v1.9.14)
+"""Bilas.id Clean MCP Server Module (v1.9.15)
 
 Comprehensive Model Context Protocol (MCP) server for Bilas.id POS & Reporting Platform:
   - Multi-Modal Onboarding (Interactive Playwright GUI, Automated OAuth Bridge, Manual Token Paste, Env Vars)
@@ -47,19 +47,19 @@ ARUSKAS_NERACA_URL = "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/aru
 PEMINDAHAN_URL = "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pemindahansaldo"
 REPORT_ENDPOINTS = {
  "ringkasan_outlet": "https://laporan.apibilas.com/v1/laporanoutlet/ringkasan",
- "pendapatan_transaksi": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/transaksi",
- "topup_paket": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/topuppaket",
- "topup_deposit": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/topupdeposit",
- "self_service_income": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/selfservice",
- "other_income": "https://laporan.apibilas.com/v1/laporanoutlet/pendapatan/lainnya",
+ "pendapatan_transaksi": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pendapatan",
+ "topup_paket": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pendapatanpaket",
+ "topup_deposit": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pendapatanemoney",
+ "self_service_income": "https://laporan.apibilas.com/v1/qris/pendapatanselfservice",
+ "other_income": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pendapatanlain",
  "piutang": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/piutang",
  "pembulatan": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pembulatan",
- "merchant_fees": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/merchantfee",
+ "merchant_fees": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/biayalayanan",
  "customer_growth": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/pertumbuhan",
- "top_customers": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/top",
- "package_quota": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/kuotapaket",
- "deposit_balance": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/saldodeposit",
- "kasbon_history": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/kasbon",
+ "top_customers": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/toppelanggan",
+ "package_quota": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/sisakuota",
+ "deposit_balance": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/sisaemoney",
+ "kasbon_history": "https://laporan.apibilas.com/v1/laporanoutlet/pelanggan/riwayatbon",
 }
 
 def ensure_config_dir():
@@ -479,9 +479,9 @@ from mcp.server.mcpserver import MCPServer
 
 mcp = MCPServer(
     name="bilas-id-mcp",
-    version="1.9.14",
+    version="1.9.15",
     description=(
-        "Bilas.id MCP Server v1.9.14 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.15 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -511,25 +511,49 @@ def _validate_report_dates(tgl_awal: str, tgl_akhir: str):
     return start.strftime(fmt), end.strftime(fmt)
 
 def _post_report(report_name: str, tgl_awal: str, tgl_akhir: str):
-    """POST an authenticated report while preserving raw response and metadata."""
+    """POST an authenticated report while preserving raw response and metadata.
+
+    Uses the dashboard's full body shape (`pemilik`, `dibuat_tgl`, `tipe`,
+    `user`, `mode`, `send_data`) which the report endpoints require. The
+    Ringkasan Outlet endpoint takes a different `id` shape — a JSON-encoded
+    array of outlet descriptors — and is handled inline.
+    """
     start, end = _validate_report_dates(tgl_awal, tgl_akhir)
     headers, state = get_valid_headers()
     request_id = str(uuid.uuid4())
-    body = {"id": state["outlet_id"], "tgl_awal": start, "tgl_akhir": end, "req_id": request_id}
+    outlet_id = state["outlet_id"]
+    user_id = state.get("user_id", "")
     url = REPORT_ENDPOINTS[report_name]
+    if report_name == "ringkasan_outlet":
+        body = {
+            "req_id": request_id,
+            "tgl_awal": start, "tgl_akhir": end,
+            "id": json.dumps([{"id_outlet": outlet_id, "dibuat_tgl": "2024-01-01T00:00:00.000Z"}]),
+            "pemilik": user_id,
+            "send_data": False, "tipe": "semua",
+            "user": f"web-{user_id}", "mode": "all list",
+        }
+    else:
+        body = {
+            "req_id": request_id,
+            "tgl_awal": start, "tgl_akhir": end,
+            "id": outlet_id, "pemilik": user_id,
+            "send_data": False, "tipe": "semua",
+            "user": f"web-{user_id}", "mode": "all list",
+        }
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=60) as response:
             raw, status_code = json.loads(response.read().decode("utf-8")), response.status
         return {"status": "success", "api_response": raw, "normalized_metadata": {
-            "report": report_name, "endpoint": url, "outlet_id": state["outlet_id"],
+            "report": report_name, "endpoint": url, "outlet_id": outlet_id,
             "period": {"tgl_awal": start, "tgl_akhir": end}, "request_id": request_id,
             "http_status": status_code}}
     except urllib.error.HTTPError as exc:
         return {"status": "error", "message": "Bilas report request failed", "http_code": exc.code,
                 "normalized_metadata": {"report": report_name, "endpoint": url, "request_id": request_id}}
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-        return {"status": "error", "message": "Bilas report could not be retrieved",
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        return {"status": "error", "message": f"Bilas report could not be retrieved: {type(exc).__name__}: {exc}",
                 "normalized_metadata": {"report": report_name, "endpoint": url, "request_id": request_id}}
 
 def _report_tool(report_name, tgl_awal, tgl_akhir):
@@ -1355,7 +1379,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.14\n"
+            "\n  Bilas.id MCP Server v1.9.15\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"
