@@ -1,4 +1,15 @@
 # Changelog
+## [1.9.20] - 2026-08-31
+
+### Fixed
+- `bilas_get_order_details` now surfaces promo/discount info (`promo.nama`,
+  `promo.tipe`, `promo.nilai`), `total_dibayar`, `sisa_tagihan`, and
+  `metode_pembayaran` when present. Empty `keterangan` fields are omitted
+  instead of showing "-". The `total_tagihan` fallback now also checks
+  `detail_pembayaran.totalharga` before computing from `total_harga -
+  total_potongan`.
+
+
 
 ## [1.9.19] - 2026-08-31
 

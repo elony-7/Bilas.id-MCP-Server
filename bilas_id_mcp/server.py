@@ -1,4 +1,4 @@
-"""Bilas.id Clean MCP Server Module (v1.9.15)
+"""Bilas.id Clean MCP Server Module (v1.9.20)
 
 Comprehensive Model Context Protocol (MCP) server for Bilas.id POS & Reporting Platform:
   - Multi-Modal Onboarding (Interactive Playwright GUI, Automated OAuth Bridge, Manual Token Paste, Env Vars)
@@ -481,7 +481,7 @@ mcp = MCPServer(
     name="bilas-id-mcp",
     version="1.9.15",
     description=(
-        "Bilas.id MCP Server v1.9.15 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.20 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -1376,17 +1376,37 @@ def bilas_get_order_details(transaction_id: str) -> str:
             qty_val = it.get("qty", 0)
             satuan_val = it.get("satuan", "")
             qty_str = f"{qty_val} {satuan_val}".strip()
-            
-            items_summary.append({
+
+            item = {
                 "nama_layanan": nama_layanan_full,
                 "status_pengerjaan": it.get("proses") or res.get("status_pengerjaan", "-"),
-                "keterangan": it.get("keterangan") or "-",
                 "qty": qty_str,
                 "harga_satuan": int(it.get("biaya", 0)) if str(it.get("biaya", 0)).isdigit() else it.get("biaya", 0),
                 "total_harga": it.get("total_detail", 0),
                 "satuan": satuan_val,
-                "image_url": it.get("img_layanan", "")
-            })
+                "image_url": it.get("img_layanan", ""),
+            }
+            if it.get("keterangan"):
+                item["keterangan"] = it["keterangan"]
+            items_summary.append(item)
+
+        # Promo / discount context
+        promo_raw = res.get("promo") or {}
+        promo_info = None
+        if isinstance(promo_raw, dict) and promo_raw.get("nama_promo"):
+            promo_info = {
+                "nama": promo_raw.get("nama_promo", ""),
+                "tipe": promo_raw.get("tipe_promo", ""),
+                "nilai": promo_raw.get("nilai_promo", 0),
+                "jenis": promo_raw.get("jenis_promo", ""),
+            }
+
+        # Payment breakdown from detail_pembayaran
+        pay = res.get("detail_pembayaran") or {}
+
+        total_harga = res.get("total_harga", 0)
+        total_potongan = res.get("total_potongan", 0)
+        total_tagihan = res.get("total_tagihan") or pay.get("totalharga") or (total_harga - total_potongan)
 
         output = {
             "status": "success",
@@ -1396,14 +1416,20 @@ def bilas_get_order_details(transaction_id: str) -> str:
             "hp": res.get("hp"),
             "parfum": res.get("parfum", "-"),
             "status_pengerjaan": res.get("status_pengerjaan"),
-            "status_pembayaran": "Lunas" if res.get("status_pembayaran") else "Belum Lunas",
-            "total_harga": res.get("total_harga", 0),
-            "total_potongan": res.get("total_potongan", 0),
-            "total_tagihan": res.get("total_tagihan") or (res.get("total_harga", 0) - res.get("total_potongan", 0)),
+            "status_pembayaran": "Lunas" if res.get("status_pembayaran") or res.get("lunas") else "Belum Lunas",
+            "total_harga": total_harga,
+            "total_potongan": total_potongan,
+            "total_tagihan": total_tagihan,
+            "total_dibayar": res.get("total_dibayar", 0),
+            "sisa_tagihan": pay.get("piutang", total_tagihan - res.get("total_dibayar", 0)),
             "waktu_antrian": res.get("waktu_antrian"),
             "waktu_estimasi": res.get("waktu_estimasi"),
-            "detail_layanan": items_summary
+            "detail_layanan": items_summary,
         }
+        if promo_info:
+            output["promo"] = promo_info
+        if res.get("metode_pembayaran"):
+            output["metode_pembayaran"] = res["metode_pembayaran"]
         return json.dumps(output, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)}, indent=2)
@@ -1510,7 +1536,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.17\n"
+            "\n  Bilas.id MCP Server v1.9.20\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"
