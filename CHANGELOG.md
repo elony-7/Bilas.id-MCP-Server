@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.19] - 2026-08-31
+
+### Security
+- Replace the literal Firestore outlet document ID in the README `--outlet`
+  example with a `#example_outlet_id` placeholder. The previous value was
+  the user's production outlet (Sovéra Laundry) and was visible on every
+  prior release. This release scrubs the README; older tags/releases were
+  retracted and are no longer downloadable from the public release list.
+
 ## [1.9.18] - 2026-08-31
 
 ### Added

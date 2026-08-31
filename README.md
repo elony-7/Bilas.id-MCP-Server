@@ -28,7 +28,7 @@ Agents or automation scripts can save session credentials directly without openi
 bilas-mcp --token "eyJhbGci..."
 
 # Pass both JWT token and Outlet ID
-bilas-mcp --token "eyJhbGci..." --outlet "2cvnOPoOgK9uZBQCc40c"
+bilas-mcp --token "eyJhbGci..." --outlet "#example_outlet_id"
 ```
 
 ## 🛠️ Complete Feature & Tool Suite
