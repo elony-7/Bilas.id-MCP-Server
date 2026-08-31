@@ -1,4 +1,4 @@
-"""Bilas.id Clean MCP Server Module (v1.9.20)
+"""Bilas.id Clean MCP Server Module (v1.9.21)
 
 Comprehensive Model Context Protocol (MCP) server for Bilas.id POS & Reporting Platform:
   - Multi-Modal Onboarding (Interactive Playwright GUI, Automated OAuth Bridge, Manual Token Paste, Env Vars)
@@ -481,7 +481,7 @@ mcp = MCPServer(
     name="bilas-id-mcp",
     version="1.9.15",
     description=(
-        "Bilas.id MCP Server v1.9.20 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
+        "Bilas.id MCP Server v1.9.21 — AI Agent integration for Bilas.id POS & Laundry Management.\n"
         "AUTHENTICATION: All tools auto-read credentials from ~/.bilas_id/token_state.json.\n"
         "To authenticate: run CLI 'bilas-mcp --token <FULL_JWT>' or call tool bilas_set_manual_credentials().\n"
         "NEVER save tokens to .txt/.env/local files manually. NEVER truncate JWT strings with '...' or ellipsis.\n"
@@ -879,8 +879,8 @@ def bilas_delete_expense(keuangan_id: str, date_mm_dd_yyyy: str) -> str:
 @mcp.tool()
 def bilas_search_invoice(query: str = "", page: int = 1, limit: int = 20) -> str:
     """Search customer orders/invoices by nota number, customer name, or phone number.
-    Returns: no_nota (e.g. TRX/260829/005), nama_pelanggan, status_pengerjaan (Antrian/Proses/Selesai),
-    total_tagihan, status_pembayaran, parfum, and timestamps. Pass empty query for recent orders.
+    Searches BOTH active orders (Antrian/Proses/Siap Ambil) AND completed/picked-up
+    history (riwayat), so orders at any stage are found. Pass empty query for recent orders.
     READ-ONLY. Credentials auto-loaded from ~/.bilas_id/token_state.json.
 
     Args:
@@ -890,14 +890,75 @@ def bilas_search_invoice(query: str = "", page: int = 1, limit: int = 20) -> str
     headers, st = get_valid_headers()
     outlet_id = st["outlet_id"]
     q = urllib.parse.quote(query, safe="")
-    url = f"https://apiweb.bilas.id/web/transaksi/reguler/all?id={outlet_id}&page={page}&limit={limit}&search={q}"
-    req = urllib.request.Request(url, headers=headers, method="GET")
+
+    all_orders = []
+    seen_ids = set()
+
+    # 1. Active orders (/all) — has server-side search
     try:
+        url_all = f"https://apiweb.bilas.id/web/transaksi/reguler/all?id={outlet_id}&page=1&limit=200&search={q}"
+        req = urllib.request.Request(url_all, headers=headers, method="GET")
         resp = urllib.request.urlopen(req, timeout=15)
         res = json.loads(resp.read().decode("utf-8"))
-        return json.dumps(res, indent=2, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+        for o in res.get("result", {}).get("list", []):
+            oid = o.get("id")
+            if oid and oid not in seen_ids:
+                seen_ids.add(oid)
+                all_orders.append(o)
+    except Exception:
+        pass
+
+    # 2. Completed/history orders (/riwayat) — no server-side search, filter client-side
+    try:
+        url_hist = f"https://apiweb.bilas.id/web/transaksi/reguler/riwayat?id={outlet_id}&page=1&limit=500"
+        req = urllib.request.Request(url_hist, headers=headers, method="GET")
+        resp = urllib.request.urlopen(req, timeout=20)
+        res = json.loads(resp.read().decode("utf-8"))
+        history = res.get("result", [])
+        if isinstance(history, list):
+            ql = query.strip().lower()
+            for o in history:
+                oid = o.get("id")
+                if oid in seen_ids:
+                    continue
+                if ql:
+                    match = (
+                        ql in str(o.get("no_nota", "")).lower()
+                        or ql in str(o.get("nama_pelanggan", "")).lower()
+                        or ql in str(o.get("hp", "")).lower()
+                    )
+                    if not match:
+                        continue
+                seen_ids.add(oid)
+                all_orders.append(o)
+    except Exception:
+        pass
+
+    # Sort by waktu_pesan descending (most recent first)
+    all_orders.sort(key=lambda o: o.get("waktu_pesan", ""), reverse=True)
+
+    # Paginate
+    total = len(all_orders)
+    start = (page - 1) * limit
+    page_orders = all_orders[start : start + limit]
+
+    return json.dumps({
+        "value": "1",
+        "message": "Success",
+        "result": {
+            "list": page_orders,
+        },
+        "pagination": {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": (total + limit - 1) // limit if limit else 1,
+        },
+        "source_endpoints": [
+            "/web/transaksi/reguler/all (active orders)",
+            "/web/transaksi/reguler/riwayat (completed history)",
+        ],
+    }, indent=2, ensure_ascii=False)
 
 @mcp.tool()
 def bilas_get_production_summary() -> str:
@@ -1536,7 +1597,7 @@ def main():
     # Show help
     if "--help" in sys.argv or "-h" in sys.argv:
         print(
-            "\n  Bilas.id MCP Server v1.9.20\n"
+            "\n  Bilas.id MCP Server v1.9.21\n"
             "  ─────────────────────────────────────────────────────\n"
             "  Usage:\n"
             "    bilas-mcp                         Start MCP server (stdio transport)\n"

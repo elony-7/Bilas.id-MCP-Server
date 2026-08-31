@@ -1,4 +1,14 @@
 # Changelog
+## [1.9.21] - 2026-08-31
+
+### Fixed
+- `bilas_search_invoice` now searches BOTH active orders (`/web/transaksi/reguler/all`)
+  AND completed/history orders (`/web/transaksi/reguler/riwayat`). Previously only
+  hit `/all` which returns ~13 active pipeline orders, missing all picked-up and
+  completed orders (113+ history records). Results are merged, deduplicated by order
+  ID, sorted by `waktu_pesan` descending, and paginated.
+
+
 ## [1.9.20] - 2026-08-31
 
 ### Fixed

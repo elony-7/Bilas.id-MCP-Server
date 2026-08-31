@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bilas-id-mcp"
-version = "1.9.20"
+version = "1.9.21"
 description = "Clean Model Context Protocol (MCP) Server for Bilas.id POS & Reporting Platform with Seamless 2-Step OAuth Onboarding"
 readme = "README.md"
 requires-python = ">=3.9"
