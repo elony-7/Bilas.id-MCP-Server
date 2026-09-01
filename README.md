@@ -1,4 +1,4 @@
-# Bilas.id MCP Server (v1.9.23)
+# Bilas.id MCP Server (v1.9.24)
 
 Comprehensive Model Context Protocol (MCP) server for integrating AI Agents with the **bilas.id** POS & Laundry Management Platform.
 

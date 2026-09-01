@@ -1,4 +1,4 @@
-"""Bilas.id MCP Server — customer management tools."""
+﻿"""Bilas.id MCP Server — customer management tools."""
 import json
 
 import httpx
@@ -91,14 +91,22 @@ async def bilas_list_customers(
 
 @mcp.tool()
 async def bilas_get_unique_customers(tgl_awal: str, tgl_akhir: str, limit: int = 100) -> str:
-    """Unique customer analysis for a date range. Aggregates customers from paid transactions,
-    active orders, and completed history, then enriches with registered customer profiles.
-    Returns deduplicated list with transaction count, total amount, and order statuses per customer.
+    """Unique customer analysis and Pertumbuhan Pelanggan (New vs. Returning) for any date range.
+    Accurately counts every customer who had transactions (active, completed, or picked up)
+    by combining server-side top customer reports, active pipeline orders, and customer registry.
+
+    Answers:
+    1. Total unique customers who ordered in the period
+    2. Pelanggan Baru (New customers registered in this period)
+    3. Pelanggan Lama (Returning customers registered prior to this period)
+    4. Total all-time registered customers
+    5. Itemized breakdown per customer (spend, orders, phone, statuses, registration date)
+
     READ-ONLY. Credentials auto-loaded from ~/.bilas_id/token_state.json.
 
     Args:
-        tgl_awal: Start date in YYYY/MM/DD format
-        tgl_akhir: End date in YYYY/MM/DD format
+        tgl_awal: Start date in YYYY/MM/DD format (e.g. '2026/08/01')
+        tgl_akhir: End date in YYYY/MM/DD format (e.g. '2026/08/31')
         limit: Maximum unique customers to return (default: 100)"""
     try:
         start_str, end_str = validate_report_dates(tgl_awal, tgl_akhir)
@@ -113,7 +121,7 @@ async def bilas_get_unique_customers(tgl_awal: str, tgl_akhir: str, limit: int =
     def normalize_name(name):
         return str(name or "").strip().lower()
 
-    def add_customer(name, phone, amount, status, order_id):
+    def add_customer(name, phone, amount, status, order_id=None, no_nota=None):
         key = normalize_name(name)
         if not key:
             return
@@ -124,7 +132,7 @@ async def bilas_get_unique_customers(tgl_awal: str, tgl_akhir: str, limit: int =
                 "tx_count": 0,
                 "total_amount": 0,
                 "statuses": set(),
-                "order_ids": [],
+                "orders": [],
             }
         c = customers[key]
         c["tx_count"] += 1
@@ -134,8 +142,13 @@ async def bilas_get_unique_customers(tgl_awal: str, tgl_akhir: str, limit: int =
             pass
         if status:
             c["statuses"].add(str(status))
-        if order_id:
-            c["order_ids"].append(order_id)
+        if no_nota or order_id:
+            c["orders"].append({
+                "no_nota": no_nota or "-",
+                "order_id": order_id or "-",
+                "status": status or "-",
+                "amount": int(amount or 0),
+            })
         if not c["phone"] and phone:
             c["phone"] = str(phone).strip()
 
@@ -146,26 +159,38 @@ async def bilas_get_unique_customers(tgl_awal: str, tgl_akhir: str, limit: int =
         date_part = wp[:10].replace("-", "/")
         return start_str <= date_part <= end_str
 
-    # 1. Source: pendapatan_transaksi report (paid transactions)
+    # 1. Primary Source: top_customers report (comprehensive server-side monthly aggregation)
     try:
-        report_result = await post_report("pendapatan_transaksi", tgl_awal, tgl_akhir)
-        if report_result.get("status") == "success":
-            api_data = report_result.get("api_response", {})
-            results = api_data.get("result", [])
-            if isinstance(results, list):
-                for row in results:
-                    if isinstance(row, dict):
+        top_result = await post_report("top_customers", tgl_awal, tgl_akhir)
+        if top_result.get("status") == "success":
+            top_list = top_result.get("api_response", {}).get("result", [])
+            if isinstance(top_list, list):
+                for row in top_list:
+                    cust_name = row.get("nama", "")
+                    cust_phone = row.get("hp", "")
+                    details = row.get("detail", [])
+                    if details:
+                        for item in details:
+                            add_customer(
+                                name=cust_name or item.get("nama_pelanggan", ""),
+                                phone=cust_phone or item.get("hp", ""),
+                                amount=item.get("total_harga", 0) or item.get("total_tagihan", 0),
+                                status=item.get("status_pengerjaan", ""),
+                                order_id=item.get("id", ""),
+                                no_nota=item.get("no_nota", ""),
+                            )
+                    else:
                         add_customer(
-                            row.get("nama_pelanggan", ""),
-                            row.get("hp", ""),
-                            row.get("total_tagihan", 0) or row.get("total_harga", 0),
-                            "Paid",
-                            row.get("id", ""),
+                            name=cust_name,
+                            phone=cust_phone,
+                            amount=row.get("total_harga", 0) or row.get("total_tagihan", 0),
+                            status="Completed",
+                            order_id=row.get("id", ""),
                         )
     except Exception:
         pass
 
-    # 2. Source: Active orders (/all)
+    # 2. Secondary Source: Active in-flight orders (/all) to capture unclosed recent transactions
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.get(
@@ -176,40 +201,22 @@ async def bilas_get_unique_customers(tgl_awal: str, tgl_akhir: str, limit: int =
             res = resp.json()
         for o in res.get("result", {}).get("list", []):
             if order_in_range(o):
-                add_customer(
-                    o.get("nama_pelanggan", ""),
-                    o.get("hp", ""),
-                    o.get("total_tagihan", 0) or o.get("total_harga", 0),
-                    o.get("status_pengerjaan", ""),
-                    o.get("id", ""),
-                )
-    except Exception:
-        pass
-
-    # 3. Source: Completed/history orders (/riwayat)
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.get(
-                f"{APIWEB_BASE}/web/transaksi/reguler/riwayat",
-                params={"id": outlet_id, "page": 1, "limit": 500},
-                headers=headers,
-            )
-            res = resp.json()
-        history = res.get("result", [])
-        if isinstance(history, list):
-            for o in history:
-                if order_in_range(o):
+                cust_key = normalize_name(o.get("nama_pelanggan", ""))
+                existing_orders = [ord_item.get("order_id") for ord_item in customers.get(cust_key, {}).get("orders", [])]
+                if o.get("id") not in existing_orders:
                     add_customer(
-                        o.get("nama_pelanggan", ""),
-                        o.get("hp", ""),
-                        o.get("total_tagihan", 0) or o.get("total_harga", 0),
-                        o.get("status_pengerjaan", ""),
-                        o.get("id", ""),
+                        name=o.get("nama_pelanggan", ""),
+                        phone=o.get("hp", ""),
+                        amount=o.get("total_tagihan", 0) or o.get("total_harga", 0),
+                        status=o.get("status_pengerjaan", ""),
+                        order_id=o.get("id", ""),
+                        no_nota=o.get("no_nota", ""),
                     )
     except Exception:
         pass
 
-    # 4. Enrich from customer registry
+    # 3. Enrich & Classify from customer profile registry (/web/pelanggan/list)
+    all_registered_list = []
     registered_lookup = {}
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -219,7 +226,8 @@ async def bilas_get_unique_customers(tgl_awal: str, tgl_akhir: str, limit: int =
                 json={"id": outlet_id},
             )
             raw_res = resp.json()
-        for c in raw_res.get("result", []):
+        all_registered_list = raw_res.get("result", [])
+        for c in all_registered_list:
             key = normalize_name(c.get("nama", ""))
             if key:
                 registered_lookup[key] = {
@@ -231,39 +239,55 @@ async def bilas_get_unique_customers(tgl_awal: str, tgl_akhir: str, limit: int =
     except Exception:
         pass
 
-    # Build output
+    # Calculate Pelanggan Baru vs Pelanggan Lama metrics
+    new_customers_count = 0
+    returning_customers_count = 0
+
     output_list = []
     for key, data in sorted(customers.items(), key=lambda x: x[1]["total_amount"], reverse=True):
+        reg = registered_lookup.get(key)
+        reg_at = reg.get("registered_at") if reg else None
+        reg_norm = reg_at[:10].replace("-", "/") if reg_at else ""
+
+        if reg_norm and reg_norm >= start_str:
+            is_new = True
+            customer_type = "Baru (New)"
+            new_customers_count += 1
+        else:
+            is_new = False
+            customer_type = "Lama (Returning)"
+            returning_customers_count += 1
+
         entry = {
             "name": data["name"],
-            "phone": data["phone"],
+            "phone": data["phone"] or (reg.get("phone") if reg else "-"),
+            "customer_type": customer_type,
+            "is_new": is_new,
             "transaction_count": data["tx_count"],
             "total_amount": data["total_amount"],
             "order_statuses": sorted(data["statuses"]),
+            "is_registered": bool(reg),
+            "customer_id": reg.get("customer_id") if reg else "-",
+            "registered_at": reg_at or "-",
         }
-        reg = registered_lookup.get(key)
-        if reg:
-            entry["is_registered"] = True
-            entry["customer_id"] = reg["customer_id"]
-            entry["registered_at"] = reg["registered_at"]
-            if not entry["phone"] and reg["phone"]:
-                entry["phone"] = reg["phone"]
-        else:
-            entry["is_registered"] = False
         output_list.append(entry)
 
-    output_list = output_list[:limit]
+    paged_customers = output_list[:limit]
 
     return json.dumps({
         "status": "success",
         "period": {"tgl_awal": start_str, "tgl_akhir": end_str},
-        "unique_customer_count": len(customers),
-        "returned_count": len(output_list),
-        "customers": output_list,
+        "summary": {
+            "total_transacting_customers": len(customers),
+            "pelanggan_baru_count": new_customers_count,
+            "pelanggan_lama_count": returning_customers_count,
+            "all_time_registered_customers": len(all_registered_list),
+        },
+        "returned_count": len(paged_customers),
+        "customers": paged_customers,
         "data_sources": [
-            "pendapatan_transaksi (paid transaction report)",
-            "/web/transaksi/reguler/all (active orders)",
-            "/web/transaksi/reguler/riwayat (completed history)",
-            "/web/pelanggan/list (customer registry enrichment)",
+            "toppelanggan (server-side monthly transacting aggregation)",
+            "/web/transaksi/reguler/all (active pipeline verification)",
+            "/web/pelanggan/list (registered profile & tgl_register enrichment)",
         ],
     }, indent=2, ensure_ascii=False)
