@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-VERSION = "1.9.22"
+VERSION = "1.9.23"
 
 USER_HOME = Path.home()
 CONFIG_DIR = USER_HOME / ".bilas_id"
@@ -27,6 +27,7 @@ PEMINDAHAN_URL = "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/peminda
 REPORT_ENDPOINTS = {
     "ringkasan_outlet": "https://laporan.apibilas.com/v1/laporanoutlet/ringkasan",
     "pendapatan_transaksi": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pendapatan",
+    "pengeluaran_transaksi": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pengeluaran",
     "topup_paket": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pendapatanpaket",
     "topup_deposit": "https://laporan.apibilas.com/v1/laporanoutlet/keuangan/pendapatanemoney",
     "self_service_income": "https://laporan.apibilas.com/v1/qris/pendapatanselfservice",

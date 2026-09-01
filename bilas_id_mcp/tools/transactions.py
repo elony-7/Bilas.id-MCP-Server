@@ -8,11 +8,17 @@ import httpx
 from ..server import mcp
 from ..constants import APIWEB_BASE
 from ..auth import get_valid_headers, jwt_decode_payload
-from ..helpers import fetch_order_detail, verify_production_items, production_response
+from ..helpers import fetch_order_detail, verify_production_items, production_response, validate_report_dates
 
 
 @mcp.tool()
-async def bilas_search_invoice(query: str = "", page: int = 1, limit: int = 20) -> str:
+async def bilas_search_invoice(
+    query: str = "",
+    page: int = 1,
+    limit: int = 20,
+    tgl_awal: str = "",
+    tgl_akhir: str = "",
+) -> str:
     """Search customer orders/invoices by nota number, customer name, or phone number.
     Searches BOTH active orders (Antrian/Proses/Siap Ambil) AND completed/picked-up
     history (riwayat), so orders at any stage are found. Pass empty query for recent orders.
@@ -21,7 +27,9 @@ async def bilas_search_invoice(query: str = "", page: int = 1, limit: int = 20) 
     Args:
         query: Search term — nota number (TRX/...), customer name, or phone. Empty string = all recent.
         page: Page number for pagination (default: 1)
-        limit: Results per page (default: 20, max recommended: 50)"""
+        limit: Results per page (default: 20, max recommended: 50)
+        tgl_awal: Optional start date filter in YYYY/MM/DD format. Orders before this date are excluded.
+        tgl_akhir: Optional end date filter in YYYY/MM/DD format. Orders after this date are excluded."""
     headers, st = await get_valid_headers()
     outlet_id = st["outlet_id"]
     q = urllib.parse.quote(query, safe="")
@@ -74,6 +82,25 @@ async def bilas_search_invoice(query: str = "", page: int = 1, limit: int = 20) 
                 all_orders.append(o)
     except Exception:
         pass
+
+    # Date filtering (client-side, applied after merge)
+    if tgl_awal or tgl_akhir:
+        try:
+            start_str, end_str = validate_report_dates(
+                tgl_awal or "2000/01/01",
+                tgl_akhir or "2099/12/31",
+            )
+        except ValueError as exc:
+            return json.dumps({"status": "error", "message": str(exc)}, indent=2, ensure_ascii=False)
+
+        def in_range(order):
+            wp = str(order.get("waktu_pesan", ""))
+            if not wp:
+                return False
+            date_part = wp[:10].replace("-", "/")
+            return start_str <= date_part <= end_str
+
+        all_orders = [o for o in all_orders if in_range(o)]
 
     # Sort by waktu_pesan descending (most recent first)
     all_orders.sort(key=lambda o: o.get("waktu_pesan", ""), reverse=True)

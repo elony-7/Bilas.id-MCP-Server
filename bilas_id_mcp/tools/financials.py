@@ -42,6 +42,12 @@ async def bilas_get_pendapatan_transaksi(tgl_awal: str, tgl_akhir: str) -> str:
 
 
 @mcp.tool()
+async def bilas_get_pengeluaran_transaksi(tgl_awal: str, tgl_akhir: str) -> str:
+    """Read-only Pengeluaran Transaksi (expense transactions) report; dates use YYYY/MM/DD. Returns raw response and metadata."""
+    return await report_tool("pengeluaran_transaksi", tgl_awal, tgl_akhir)
+
+
+@mcp.tool()
 async def bilas_get_topup_paket(tgl_awal: str, tgl_akhir: str) -> str:
     """Read-only Topup Paket report; dates use YYYY/MM/DD. Returns raw response and metadata."""
     return await report_tool("topup_paket", tgl_awal, tgl_akhir)
@@ -230,6 +236,107 @@ async def bilas_add_expense(cashbox: str, category: str, amount: int, descriptio
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 f"{APIWEB_BASE}/web/keuangan/koreksi-keuangan/create",
+                headers=headers,
+                json=payload,
+            )
+            return json.dumps(resp.json(), indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+
+@mcp.tool()
+async def bilas_add_income(cashbox: str, category: str, amount: int, description: str, date_mm_dd_yyyy: str) -> str:
+    """Record a new operational income (Pemasukan) in the outlet financial ledger.
+    WRITE OPERATION — use with care. Verify category names via bilas_get_financial_categories first.
+    Credentials auto-loaded from ~/.bilas_id/token_state.json.
+
+    Args:
+        cashbox: Payment method exactly as configured (e.g. "Tunai", "BCA", "QRIS", "Dana")
+        category: Income category exactly as returned by bilas_get_financial_categories (e.g. "Pendapatan Lain")
+        amount: Amount in Rupiah as integer (e.g. 50000 for Rp50,000)
+        description: Human-readable note (e.g. "Pendapatan sewa mesin")
+        date_mm_dd_yyyy: Transaction date in MM/DD/YYYY format (e.g. "08/30/2026")"""
+    headers, st = await get_valid_headers()
+    outlet_id = st["outlet_id"]
+    user_id = st.get("user_id") or jwt_decode_payload(st.get("jwt")).get("id")
+
+    payload = {
+        "id": outlet_id,
+        "zone": "Asia/Jakarta",
+        "dibuat_tgl": date_mm_dd_yyyy,
+        "dataKeuangan": {
+            "waktu": date_mm_dd_yyyy,
+            "cashbox": cashbox,
+            "kategori": category,
+            "jumlah": amount,
+            "keterangan": description,
+            "jenis": "Pemasukan",
+            "id_operator": user_id,
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{APIWEB_BASE}/web/keuangan/koreksi-keuangan/create",
+                headers=headers,
+                json=payload,
+            )
+            return json.dumps(resp.json(), indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)}, indent=2)
+
+
+@mcp.tool()
+async def bilas_update_expense(
+    keuangan_id: str,
+    date_mm_dd_yyyy: str,
+    cashbox: str = "",
+    category: str = "",
+    amount: int = 0,
+    description: str = "",
+    jenis: str = "",
+) -> str:
+    """Update an existing financial record (Pengeluaran or Pemasukan) by its keuanganId.
+    WRITE OPERATION — use with care. Only provided fields are changed; omit fields to keep their current values.
+    The keuanganId is found in bilas_add_expense / bilas_add_income responses or the web dashboard.
+    Credentials auto-loaded from ~/.bilas_id/token_state.json.
+
+    Args:
+        keuangan_id: Firestore document ID of the financial entry to update
+        date_mm_dd_yyyy: Date of the entry in MM/DD/YYYY format
+        cashbox: Updated payment method (e.g. "Tunai"). Leave empty to keep current.
+        category: Updated category name. Leave empty to keep current.
+        amount: Updated amount in Rupiah. Pass 0 to keep current.
+        description: Updated note. Leave empty to keep current.
+        jenis: "Pengeluaran" or "Pemasukan". Leave empty to keep current."""
+    headers, st = await get_valid_headers()
+    outlet_id = st["outlet_id"]
+    user_id = st.get("user_id") or jwt_decode_payload(st.get("jwt")).get("id")
+
+    data = {"waktu": date_mm_dd_yyyy, "id_operator": user_id}
+    if cashbox:
+        data["cashbox"] = cashbox
+    if category:
+        data["kategori"] = category
+    if amount > 0:
+        data["jumlah"] = amount
+    if description:
+        data["keterangan"] = description
+    if jenis:
+        data["jenis"] = jenis
+
+    payload = {
+        "id": outlet_id,
+        "outletId": outlet_id,
+        "zone": "Asia/Jakarta",
+        "dibuat_tgl": date_mm_dd_yyyy,
+        "keuanganId": keuangan_id,
+        "dataKeuangan": data,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.put(
+                f"{APIWEB_BASE}/web/keuangan/koreksi-keuangan/update",
                 headers=headers,
                 json=payload,
             )

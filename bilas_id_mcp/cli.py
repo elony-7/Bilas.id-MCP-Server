@@ -30,9 +30,10 @@ def _print_help():
     bilas_launch_browser_login         Browser + bookmarklet bridge
     bilas_set_manual_credentials       Save JWT + outlet via MCP tool call
 
-  Financial reports (14):
+  Financial reports (15):
     bilas_get_ringkasan_outlet         Outlet KPI summary
     bilas_get_pendapatan_transaksi     Transaction revenue / omzet
+    bilas_get_pengeluaran_transaksi    Transaction expenses
     bilas_get_topup_paket              Package top-ups
     bilas_get_topup_deposit            Deposit top-ups
     bilas_get_self_service_income      Self-service income
@@ -50,10 +51,12 @@ def _print_help():
     bilas_get_cashbox_report           5-column cashbox accounting matrix
     bilas_get_financial_categories     Expense/income category list
     bilas_add_expense                  Record new expense entry
+    bilas_add_income                   Record new income entry
+    bilas_update_expense               Update existing financial entry
     bilas_delete_expense               Soft-delete a financial entry
 
   Orders & production:
-    bilas_search_invoice               Search orders by nota/name/phone
+    bilas_search_invoice               Search orders by nota/name/phone/date
     bilas_get_order_details            Full order breakdown with detail items
     bilas_create_order                 Create a new laundry order
     bilas_list_orders_by_status        List orders filtered by production stage
@@ -67,6 +70,7 @@ def _print_help():
 
   Customers:
     bilas_list_customers               Search/list registered customer profiles
+    bilas_get_unique_customers         Unique customer analysis by date range
 
   MCP Resources:
     bilas://outlet/profile             Outlet profile (auto-refreshed)

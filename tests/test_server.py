@@ -21,7 +21,7 @@ def test_server_description_mentions_auth():
 @pytest.mark.asyncio
 async def test_tool_count():
     tools = await mcp.list_tools()
-    assert len(tools) == 30
+    assert len(tools) == 34
 
 
 @pytest.mark.asyncio
@@ -69,6 +69,7 @@ async def test_expected_tool_names():
         # Financial reports
         "bilas_get_ringkasan_outlet",
         "bilas_get_pendapatan_transaksi",
+        "bilas_get_pengeluaran_transaksi",
         "bilas_get_topup_paket",
         "bilas_get_topup_deposit",
         "bilas_get_self_service_income",
@@ -85,6 +86,8 @@ async def test_expected_tool_names():
         "bilas_get_cashbox_report",
         "bilas_get_financial_categories",
         "bilas_add_expense",
+        "bilas_add_income",
+        "bilas_update_expense",
         "bilas_delete_expense",
         # Transactions & production
         "bilas_search_invoice",
@@ -100,6 +103,7 @@ async def test_expected_tool_names():
         "bilas_get_outlet_profile",
         # Customers
         "bilas_list_customers",
+        "bilas_get_unique_customers",
     }
     assert names == expected, f"Missing: {expected - names}, Extra: {names - expected}"
 

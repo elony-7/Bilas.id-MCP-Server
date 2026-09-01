@@ -28,7 +28,7 @@ def test_app_tokens_have_defaults():
 
 
 def test_report_endpoints_count():
-    assert len(REPORT_ENDPOINTS) == 14
+    assert len(REPORT_ENDPOINTS) == 15
 
 
 def test_report_endpoints_are_urls():
